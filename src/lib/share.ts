@@ -19,13 +19,16 @@ interface SlimSet {
 }
 interface Pack { app: 'prompt-studio'; v: 1; sets: SlimSet[] }
 
-function slim(s: PromptSet): SlimSet {
+export interface ShareOpts { zh: boolean; regions: boolean; meta: boolean }
+export const DEFAULT_SHARE: ShareOpts = { zh: true, regions: true, meta: true }
+
+function slim(s: PromptSet, o: ShareOpts = DEFAULT_SHARE): SlimSet {
   return {
-    name: s.name, category: s.category, folder: s.folder || undefined, labels: s.labels?.length ? s.labels : undefined,
-    tags: s.tags.map((t) => ({ en: t.en, zh: t.zh || undefined, w: t.weight !== 1 ? t.weight : undefined, s: t.section || undefined })),
+    name: s.name, category: s.category, folder: o.meta ? s.folder || undefined : undefined, labels: o.meta && s.labels?.length ? s.labels : undefined,
+    tags: s.tags.map((t) => ({ en: t.en, zh: o.zh ? t.zh || undefined : undefined, w: t.weight !== 1 ? t.weight : undefined, s: t.section || undefined })),
     negative: s.negative || undefined,
-    regions: s.regions?.length ? s.regions.map(({ x, y, w, h, text }) => ({ x, y, w, h, text })) : undefined,
-    canvas: s.regions?.length ? s.canvas : undefined,
+    regions: o.regions && s.regions?.length ? s.regions.map(({ x, y, w, h, text }) => ({ x, y, w, h, text })) : undefined,
+    canvas: o.regions && s.regions?.length ? s.canvas : undefined,
   }
 }
 
@@ -44,13 +47,13 @@ async function pipe(data: Uint8Array, t: CompressionStream | DecompressionStream
   return new Uint8Array(await out.arrayBuffer())
 }
 
-function packJson(sets: PromptSet[]): string {
-  const p: Pack = { app: 'prompt-studio', v: 1, sets: sets.map(slim) }
+function packJson(sets: PromptSet[], o?: ShareOpts): string {
+  const p: Pack = { app: 'prompt-studio', v: 1, sets: sets.map((x) => slim(x, o)) }
   return JSON.stringify(p)
 }
 
-export async function makeShareCode(sets: PromptSet[]): Promise<string> {
-  const raw = new TextEncoder().encode(packJson(sets))
+export async function makeShareCode(sets: PromptSet[], o?: ShareOpts): Promise<string> {
+  const raw = new TextEncoder().encode(packJson(sets, o))
   return PREFIX + toB64u(await pipe(raw, new CompressionStream('deflate-raw')))
 }
 
@@ -123,13 +126,13 @@ async function fetchGist(id: string): Promise<string> {
   return String(f.content || '')
 }
 
-export async function publishGist(sets: PromptSet[], desc: string): Promise<string> {
+export async function publishGist(sets: PromptSet[], desc: string, o?: ShareOpts): Promise<string> {
   const token = gistToken.get()
   if (!token) throw new Error('先填 GitHub Token（只需要 gist 权限）')
   const r = await fetch('https://api.github.com/gists', {
     method: 'POST',
     headers: { Accept: 'application/vnd.github+json', Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ description: desc || 'Prompt Studio 分享', public: false, files: { [GIST_FILE]: { content: packJson(sets) } } }),
+    body: JSON.stringify({ description: desc || 'Prompt Studio 分享', public: false, files: { [GIST_FILE]: { content: packJson(sets, o) } } }),
   })
   if (r.status === 401) throw new Error('Token 无效或已过期')
   if (!r.ok) throw new Error(`发布失败（${r.status}）`)

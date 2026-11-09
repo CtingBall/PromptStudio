@@ -199,3 +199,20 @@ html.compact .chip-grid { gap: 4px; }
 .label-head { font-size: .86em; color: var(--muted); cursor: pointer; user-select: none; gap: 6px; }
 .label-head:hover { color: var(--text); }
 .label-pills { max-height: 30vh; overflow: auto; }
+
+/* ---- share dialog ---- */
+.share-modal { width: min(1040px, 96vw); max-height: 92vh; display: flex; flex-direction: column; }
+.share-body { display: grid; grid-template-columns: minmax(260px, 2fr) 3fr; gap: 14px; margin-top: 10px; min-height: 0; overflow: auto; }
+@media (max-width: 760px) { .share-body { grid-template-columns: 1fr; } }
+.share-col { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.share-list { max-height: 56vh; }
+.xfer-item.focus { outline: 1px solid var(--accent); }
+.sm-thumb { width: 32px; height: 32px; display: grid; place-items: center; color: var(--muted); font-size: .8em; }
+.share-sub { font-size: .82em; }
+.share-sum { padding: 6px 10px; border-radius: 8px; background: var(--accent-soft); }
+.share-opts .pill { cursor: pointer; }
+.warn-line { margin: 0; font-size: .86em; color: var(--c-nsfw); }
+.share-preview { border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; background: var(--panel2); }
+.share-label { margin-top: 6px; font-size: .78em; color: var(--muted); }
+.share-text { margin: 2px 0 0; white-space: pre-wrap; word-break: break-word; font-family: inherit; font-size: .86em;
+  max-height: 20vh; overflow: auto; }
