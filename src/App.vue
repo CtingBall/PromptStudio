@@ -9,6 +9,7 @@ import Gallery from './components/Gallery.vue'
 import AiTools from './components/AiTools.vue'
 import TransferDialog from './components/TransferDialog.vue'
 import Credits from './components/Credits.vue'
+import ShareDialog from './components/ShareDialog.vue'
 import {
   doc, removeSet, duplicateSet, touch, addTag, removeTag,
   promptText, remember, settings, newSet, buildTags, folders,
@@ -61,6 +62,7 @@ async function manualBackup() {
 
 // ---- layout / appearance ----
 const showOut = ref(false)
+const showShare = ref(false)
 function startSide(e: PointerEvent) {
   dragSplit(e, () => ui.sideW, (v) => (ui.sideW = clampW(v, 200, 520)), 1)
 }
@@ -378,6 +380,7 @@ function applyRaw() {
       <div class="btn-group">
         <button @click="openXfer('import')">导入</button>
         <button @click="openXfer('export')">导出</button>
+        <button title="分享码 / Gist 链接" @click="showShare = true">🔗 分享</button>
       </div>
       <div class="btn-group" title="主题">
         <button v-for="t in THEMES" :key="t.id" :class="{ on: ui.theme === t.id }" @click="ui.theme = t.id">{{ t.label }}</button>
@@ -616,6 +619,7 @@ function applyRaw() {
     <TransferDialog v-if="xfer" :mode="xfer" :preselect="xferIds" :current="selectedId"
       @close="xfer = ''" @toast="flash" @select="selectedId = $event" />
     <Credits />
+    <ShareDialog v-if="showShare" :current="selectedId" @close="showShare = false" @toast="flash" @select="selectedId = $event" />
     <GenerateDialog v-if="showGen" :initial-mode="genMode" :initial-raw="genRaw" @close="showGen = false" @apply="applyGenerated" />
   </div>
 </template>
