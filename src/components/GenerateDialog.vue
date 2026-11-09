@@ -5,6 +5,7 @@ import { doc, settings } from '../lib/store'
 import { DEFAULT_GEN_PREFIX, DEFAULT_GEN_NEGATIVE, type Region } from '../lib/types'
 import { fileToDataUrl } from '../lib/image'
 import LayoutPanel from './LayoutPanel.vue'
+import { uid } from '../lib/tags'
 
 export interface GenPayload {
   name: string
@@ -38,6 +39,16 @@ const err = ref('')
 const showInject = ref(false)
 const removed = ref<string[]>([])
 
+// ---- optional: AI designs a grid layout too (theme / rewrite modes) ----
+const autoLayout = ref(localStorage.getItem('ps-auto-layout') === '1')
+const autoGrid = ref(8)
+const SIZES = [
+  { label: '竖 2:3', w: 832, h: 1216 }, { label: '方 1:1', w: 1024, h: 1024 }, { label: '横 3:2', w: 1216, h: 832 },
+  { label: '竖 9:16', w: 768, h: 1344 }, { label: '横 16:9', w: 1344, h: 768 },
+]
+const autoSize = ref(0)
+function setAuto(v: boolean) { autoLayout.value = v; localStorage.setItem('ps-auto-layout', v ? '1' : '0') }
+
 // ---- reference images ----
 const images = ref<string[]>([])
 const fileEl = ref<HTMLInputElement>()
@@ -63,6 +74,7 @@ function resetInject() {
   doc.settings.banIdentity = true
 }
 
+const useAuto = computed(() => autoLayout.value && mode.value !== 'layout')
 const mainText = computed(() => (mode.value === 'theme' ? theme.value : mode.value === 'rewrite' ? raw.value : scene.value).trim())
 const canRun = computed(() => {
   if (busy.value) return false
@@ -83,7 +95,9 @@ async function run() {
       text: mainText.value,
       images: images.value,
       regions: mode.value === 'layout' ? regions : undefined,
-      canvas: mode.value === 'layout' ? canvas : undefined,
+      canvas: mode.value === 'layout' ? canvas : useAuto.value ? SIZES[autoSize.value] : undefined,
+      autoLayout: useAuto.value,
+      grid: autoGrid.value,
     }, { temperature: temp.value, rules: s.genRules, banIdentity: s.banIdentity })
     if (!r.sections.length) throw new Error('模型没有返回可用的标签，请重试或换个模型')
     removed.value = r.removed
@@ -97,6 +111,20 @@ async function run() {
         text: (byId.get(g.id) || r.regions[i]?.tags || []).join(', ') || g.text,
       }))
     }
+    let outCanvas = outRegions ? { ...canvas } : undefined
+    if (!outRegions && useAuto.value && r.boxes.length) {
+      const g = autoGrid.value
+      const sn = (v: number) => (g ? Math.round(v * g) / g : v)
+      outRegions = r.boxes.map((b) => {
+        const x = sn(b.x), y = sn(b.y)
+        const w = Math.max(g ? 1 / g : 0.05, Math.min(1 - x, sn(b.w)))
+        const h = Math.max(g ? 1 / g : 0.05, Math.min(1 - y, sn(b.h)))
+        return { id: uid('r'), x, y, w, h, text: b.tags.join(', ') }
+      })
+      outCanvas = { w: SIZES[autoSize.value].w, h: SIZES[autoSize.value].h }
+    } else if (!outRegions && useAuto.value) {
+      err.value = '模型没给布局，已只生成提示词'
+    }
     const nameSrc = r.name || mainText.value || (mode.value === 'layout' ? '布局' : '参考图生成')
     emit('apply', {
       name: nameSrc.replace(/\s+/g, ' ').slice(0, 20),
@@ -104,7 +132,7 @@ async function run() {
       sections: r.sections,
       negative: Array.from(new Map(neg.map((t) => [t.toLowerCase(), t])).values()),
       regions: outRegions,
-      canvas: outRegions ? { ...canvas } : undefined,
+      canvas: outCanvas,
     })
   } catch (e: any) {
     err.value = e?.message || String(e)
@@ -156,6 +184,24 @@ async function run() {
             <button class="ghost danger" style="position: absolute; top: 0; right: 0; padding: 0 5px" @click="images.splice(i, 1)">×</button>
           </div>
         </div>
+      </div>
+
+      <div v-if="mode !== 'layout'" class="row wrap" style="margin-top: 10px; gap: 6px">
+        <label class="row" style="gap: 6px">
+          <input type="checkbox" :checked="autoLayout" style="width: auto" @change="setAuto(($event.target as HTMLInputElement).checked)" />
+          同时生成画框布局（可选）
+        </label>
+        <template v-if="autoLayout">
+          <select v-model.number="autoSize" style="width: auto">
+            <option v-for="(z, i) in SIZES" :key="i" :value="i">{{ z.label }} {{ z.w }}×{{ z.h }}</option>
+          </select>
+          <label class="row muted" style="gap: 4px">网格
+            <select v-model.number="autoGrid" style="width: auto">
+              <option :value="0">自由</option><option :value="4">4×4</option><option :value="8">8×8</option>
+              <option :value="12">12×12</option><option :value="16">16×16</option>
+            </select></label>
+          <span class="muted" style="font-size: 12px">生成后可在「画框布局」里继续拖动调整</span>
+        </template>
       </div>
 
       <div class="row" style="margin-top: 10px">
