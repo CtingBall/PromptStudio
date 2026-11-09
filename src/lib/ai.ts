@@ -42,7 +42,7 @@ export async function aiVariants(prompt: string, negative: string, n: number, hi
   return res.filter((r): r is PromiseFulfilledResult<GenResult> => r.status === 'fulfilled').map((r) => r.value)
 }
 
-export interface ClassifyResult { rating: Category; folder: string; labels: string[]; name: string; reason: string }
+export interface ClassifyResult { rating?: Category; folder: string; labels: string[]; name: string; reason: string }
 
 export async function aiClassify(prompt: string, folders: string[], labels: string[]): Promise<ClassifyResult> {
   const system = `你是 AI 绘图提示词的整理助手。根据提示词内容给出分级、文件夹、标签和名称。
@@ -58,7 +58,7 @@ name 要概括整组画面（如「雨夜霓虹街头的红伞少女」），不
 提示词：
 ${prompt}`
   const r = extractJson<any>(await chat({ temperature: 0.2, system, user }))
-  const rating = (['SAFE', 'SFW', 'NSFW'].includes(r?.rating) ? r.rating : 'SAFE') as Category
+  const rating = (['SAFE', 'SFW', 'NSFW'].includes(r?.rating) ? (r.rating as Category) : undefined)
   return {
     rating,
     folder: String(r?.folder || '').trim(),

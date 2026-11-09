@@ -17,13 +17,13 @@ const instruction = ref('')
 const nVar = ref(3)
 const busy = ref('')
 const note = ref('')
-const undo = ref<{ id: string; tags: Tag[]; negative: string } | null>(null)
+const undo = ref<{ id: string; tags: Tag[]; negative: string; name: string } | null>(null)
 const review = ref<ReviewResult | null>(null)
 const reviewSet = ref<PromptSet | null>(null) // the set the current review was made for
 
 // Run fn with the set captured NOW; nothing inside reads props.set after an await.
 async function job(label: string, fn: (set: PromptSet) => Promise<void>) {
-  if (busy.value) return
+  if (busy.value) { emit('toast', '正在执行：' + busy.value); return }
   const set = props.set
   busy.value = label
   note.value = ''
@@ -34,7 +34,7 @@ function withNeg(base: string, r: GenResult) { return dedupe([...base.split(',')
 
 function apply(set: PromptSet, r: GenResult) {
   if (!r.sections.length) throw new Error('模型没有返回可用的标签')
-  undo.value = { id: set.id, tags: JSON.parse(JSON.stringify(set.tags)), negative: set.negative }
+  undo.value = { id: set.id, tags: JSON.parse(JSON.stringify(set.tags)), negative: set.negative, name: set.name }
   set.tags = buildTags(settings().genPrefix, r.sections)
   if (r.negative.length) set.negative = withNeg(settings().genNegative, r)
   if (r.name && /^(未命名|生成|示例|返图|布局|参考图)/.test(set.name)) set.name = r.name
@@ -48,6 +48,7 @@ function undoLast() {
   if (!u || !s) return
   s.tags = u.tags
   s.negative = u.negative
+  s.name = u.name
   touch(s)
   undo.value = null
 }
@@ -68,14 +69,16 @@ const run = (text: string) => job('AI 修改', async (set) => {
   apply(set, await aiEdit(promptText(set, true), set.negative, text))
 })
 const variants = () => job('生成变体', async (set) => {
-  const rs = await aiVariants(promptText(set, true), set.negative, nVar.value, instruction.value.trim())
+  const n = Math.min(8, Math.max(1, Math.round(Number(nVar.value) || 1)))
+  nVar.value = n
+  const rs = await aiVariants(promptText(set, true), set.negative, n, instruction.value.trim())
   if (!rs.length) throw new Error('没有成功的变体')
   rs.forEach((r, i) => addSetFrom(set, r, `${set.name} 变体${i + 1}`))
   emit('toast', `已新建 ${rs.length} 个变体组`)
 })
 const classify = () => job('AI 整理', async (set) => {
   const r = await aiClassify(promptText(set, true), folders.value, allLabels.value)
-  set.category = r.rating
+  if (r.rating) set.category = r.rating
   if (r.folder) set.folder = r.folder
   set.labels = [...new Set([...(set.labels || []), ...r.labels])]
   if (r.name) set.name = r.name
@@ -140,6 +143,8 @@ defineExpose({ reviewImage, reverseImage })
     <div v-if="review" class="review">
       <div class="row">
         <strong>诊断</strong>
+        <span v-if="reviewSet" class="muted" style="font-size: 12px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap"
+          :style="{ color: reviewSet.id !== set.id ? 'var(--c-sfw)' : '' }">针对：{{ reviewSet.name }}</span>
         <span class="score" :style="{ color: review.score >= 75 ? 'var(--accent2)' : review.score >= 50 ? 'var(--c-sfw)' : 'var(--danger)' }">
           {{ review.score }} 分</span>
         <span class="spacer" />

@@ -47,16 +47,37 @@ if (!doc.sets.length) {
 }
 
 let t: number | undefined
+let dirty = false
+let warned = false
+function save(): void {
+  clearTimeout(t)
+  t = undefined
+  if (!dirty) return
+  try {
+    localStorage.setItem(LS_KEY, JSON.stringify(doc))
+    dirty = false
+    warned = false
+  } catch (e: any) {
+    if (!warned) {
+      warned = true
+      const quota = e?.name === 'QuotaExceededError' || e?.code === 22
+      window.dispatchEvent(new CustomEvent('ps:toast', {
+        detail: (quota ? '保存失败：浏览器存储空间已满' : '保存失败：' + (e?.message || e)) + '，请尽快导出备份',
+      }))
+    }
+  }
+}
 watch(
   doc,
   () => {
+    dirty = true
     clearTimeout(t)
-    t = window.setTimeout(() => {
-      localStorage.setItem(LS_KEY, JSON.stringify(doc))
-    }, 300)
+    t = window.setTimeout(save, 300)
   },
   { deep: true },
 )
+window.addEventListener('pagehide', save)
+window.addEventListener('beforeunload', save)
 
 // ---- dictionary cache ----
 export function lookup(enLower: string): string {

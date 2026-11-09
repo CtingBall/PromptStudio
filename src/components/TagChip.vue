@@ -3,6 +3,7 @@
 // grows with the text (width up to 32em, then wraps and grows in height).
 import { ref, nextTick } from 'vue'
 import type { Tag } from '../lib/types'
+import { lookup, remember } from '../lib/store'
 
 const props = defineProps<{ tag: Tag }>()
 const emit = defineEmits<{ (e: 'remove'): void; (e: 'change'): void }>()
@@ -22,7 +23,9 @@ function fit() {
   el.style.height = el.scrollHeight + 2 + 'px'
 }
 
+let snap = { en: '', zh: '' }
 async function startEdit(which: 'en' | 'zh') {
+  snap = { en: props.tag.en, zh: props.tag.zh }
   editing.value = which
   await nextTick()
   // stop the draggable wrapper from hijacking text selection while editing
@@ -33,14 +36,31 @@ async function startEdit(which: 'en' | 'zh') {
   box.value?.select()
 }
 
-function commit() {
-  if (editing.value === 'none') return
+function endEdit() {
   const w = box.value?.closest('[draggable]') as HTMLElement | null
   if (w) w.draggable = true
   editing.value = 'none'
-  props.tag.en = props.tag.en.replace(/\s*\n\s*/g, ' ').trim()
-  props.tag.zh = props.tag.zh.replace(/\s*\n\s*/g, ' ').trim()
-  emit('change')
+}
+function commit() {
+  if (editing.value === 'none') return
+  const which = editing.value
+  endEdit()
+  const t = props.tag
+  t.en = t.en.replace(/\s*\n\s*/g, ' ').trim()
+  t.zh = t.zh.replace(/\s*\n\s*/g, ' ').trim()
+  if (!t.en) { emit('remove'); return }
+  if (which === 'en' && t.en.toLowerCase() !== snap.en.toLowerCase()) {
+    // the old Chinese gloss belongs to the old word
+    t.zh = lookup(t.en.toLowerCase())
+  }
+  if (which === 'zh' && t.zh && t.zh !== snap.zh) remember(t.en, t.zh)
+  if (t.en !== snap.en || t.zh !== snap.zh) emit('change')
+}
+function cancel() {
+  if (editing.value === 'none') return
+  endEdit() // blur fires afterwards but editing is already 'none'
+  props.tag.en = snap.en
+  props.tag.zh = snap.zh
 }
 
 function bump(delta: number) {
@@ -55,7 +75,7 @@ function bump(delta: number) {
     <template v-for="k in (['en', 'zh'] as const)" :key="k">
       <textarea v-if="editing === k" :ref="setBox" v-model="tag[k]" class="chip-edit" rows="1"
         :placeholder="k === 'zh' ? '中文' : 'english tag'" draggable="false"
-        @input="fit" @blur="commit" @keydown.enter.exact.prevent="commit" @keydown.esc="commit"
+        @input="fit" @blur="commit" @keydown.enter.exact.prevent="commit" @keydown.esc.prevent="cancel"
         @dragstart.stop.prevent @pointerdown.stop />
       <span v-else :class="k" @dblclick="startEdit(k)">{{ tag[k] || (k === 'en' ? '…' : '（未译）') }}</span>
     </template>

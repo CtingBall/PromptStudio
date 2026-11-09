@@ -13,7 +13,7 @@ const props = defineProps<{ set: PromptSet }>()
 const emit = defineEmits<{
   (e: 'review', id: string): void
   (e: 'reverse', id: string): void
-  (e: 'import-meta', meta: { positive: string; negative: string }): void
+  (e: 'import-meta', meta: { positive: string; negative: string; shotId?: string; raw?: string }): void
   (e: 'toast', msg: string): void
 }>()
 
@@ -70,10 +70,20 @@ function cover(id: string) {
 // ---- lightbox ----
 const view = ref(-1)
 const cur = computed(() => shots.value[view.value])
-const curMeta = computed(() => (cur.value?.meta ? parseGenMeta({ parameters: cur.value.meta }) || parseGenMeta({ prompt: cur.value.meta }) : null))
+// shot.meta stores the raw text: ComfyUI "prompt" JSON or an A1111/NovelAI string.
+function metaOf(raw: string) {
+  const s = raw.trim()
+  if (s.startsWith('{')) {
+    try { JSON.parse(s); return parseGenMeta({ prompt: s }) } catch { /* not JSON, fall through */ }
+  }
+  return parseGenMeta({ parameters: raw })
+}
+const curMeta = computed(() => (cur.value?.meta ? metaOf(cur.value.meta) : null))
 function key(e: KeyboardEvent) {
   if (view.value < 0) return
-  if (e.key === 'Escape') view.value = -1
+  if (e.key === 'Escape') { view.value = -1; return }
+  const t = e.target as HTMLElement | null
+  if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return
   if (e.key === 'ArrowRight') view.value = (view.value + 1) % shots.value.length
   if (e.key === 'ArrowLeft') view.value = (view.value - 1 + shots.value.length) % shots.value.length
 }
@@ -119,7 +129,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', key))
           <textarea v-model="cur.note" rows="2" placeholder="备注：模型 / LoRA / 种子 / 效果…" @change="touch(set)" />
           <button class="primary" @click="emit('review', cur.id); view = -1">✨ AI 对比诊断并给修正版</button>
           <button @click="emit('reverse', cur.id); view = -1">✨ 用这张图反推新提示词组</button>
-          <button v-if="curMeta" @click="emit('import-meta', curMeta); view = -1">📥 用图里的参数新建组</button>
+          <button v-if="curMeta" @click="emit('import-meta', { ...curMeta, shotId: cur.id, raw: cur.meta }); view = -1">📥 用图里的参数新建组</button>
           <button class="ghost" :disabled="view === 0" @click="cover(cur.id)">设为封面</button>
           <button class="ghost danger" @click="remove(cur.id)">删除这张</button>
           <div v-if="curMeta" class="meta-box">

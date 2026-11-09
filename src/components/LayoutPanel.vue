@@ -53,7 +53,7 @@ function clearAll() {
 }
 function onKey(e: KeyboardEvent) {
   const t = e.target as HTMLElement
-  if (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA') return
+  if (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable) return
   if ((e.key === 'Delete' || e.key === 'Backspace') && selected.value) remove(selected.value)
 }
 </script>

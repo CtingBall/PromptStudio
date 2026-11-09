@@ -62,6 +62,7 @@ function onDown(e: PointerEvent) {
 }
 function onBoxDown(r: Region, e: PointerEvent) {
   e.stopPropagation()
+  if (e.button !== 0) return
   const p = point(e)
   drag = { kind: 'move', r, dx: p.x - r.x, dy: p.y - r.y }
   emit('update:selected', r.id)
@@ -69,6 +70,7 @@ function onBoxDown(r: Region, e: PointerEvent) {
 }
 function onHandleDown(r: Region, corner: string, e: PointerEvent) {
   e.stopPropagation()
+  if (e.button !== 0) return
   // fixed (opposite) corner stays put while resizing
   const fx = corner.includes('w') ? r.x + r.w : r.x
   const fy = corner.includes('n') ? r.y + r.h : r.y
@@ -89,6 +91,12 @@ function onMove(e: PointerEvent) {
     const bx = snap(p.x), by = snap(p.y)
     r.x = Math.min(ax, bx); r.y = Math.min(ay, by)
     r.w = Math.abs(bx - ax); r.h = Math.abs(by - ay)
+    if (drag.kind === 'resize') {
+      // never collapse an existing box to zero; grow away from the fixed corner
+      const min = Math.max(props.grid ? 1 / props.grid : 0, 0.02)
+      if (r.w < min) { r.w = min; r.x = bx < ax ? ax - min : ax; r.x = clamp(r.x, 0, 1 - min) }
+      if (r.h < min) { r.h = min; r.y = by < ay ? ay - min : ay; r.y = clamp(r.y, 0, 1 - min) }
+    }
   }
 }
 function onUp() {

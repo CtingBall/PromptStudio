@@ -13,7 +13,8 @@ export const APP_VERSION = typeof __APP_VERSION__ === 'string' ? __APP_VERSION__
 
 // Download a complete backup (every set + its images). Returns the set count.
 export async function backupAll(): Promise<number> {
-  return exportSets(doc.sets, 'all', false)
+  await exportSets(doc.sets, 'all', false)
+  return doc.sets.length
 }
 
 // Call once on startup. If the stored app version differs from the running one

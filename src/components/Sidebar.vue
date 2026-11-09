@@ -41,6 +41,10 @@ function toggleLabel(l: string) {
 }
 
 function create() {
+  // a fresh set has no name match / labels / star, so clear filters that would hide it
+  q.value = ''
+  label.value = []
+  favOnly.value = false
   const s = addSet()
   if (rating.value !== 'ALL' && rating.value !== 'NONE') s.category = rating.value
   if (folder.value && folder.value !== '__none') s.folder = folder.value
@@ -77,7 +81,7 @@ async function bulkClassify() {
     aiBusy.value = `AI 整理 ${i + 1}/${list.length}`
     try {
       const r = await aiClassify(promptText(list[i], true), folders.value, allLabels.value)
-      list[i].category = r.rating
+      if (r.rating) list[i].category = r.rating
       if (r.folder) list[i].folder = r.folder
       list[i].labels = [...new Set([...(list[i].labels || []), ...r.labels])]
       if (r.name) list[i].name = r.name
@@ -87,7 +91,10 @@ async function bulkClassify() {
   aiBusy.value = ''
 }
 function bulkDelete() {
-  if (!sel.value.length || !confirm(`删除选中的 ${sel.value.length} 个提示词组（含返图）？`)) return
+  if (!sel.value.length) return
+  const shownIds = new Set(visible.value.map((s) => s.id))
+  const hidden = sel.value.filter((id) => !shownIds.has(id)).length
+  if (!confirm(`删除选中的 ${sel.value.length} 个提示词组（含返图）？` + (hidden ? `\n注意：其中含 ${hidden} 个未显示（被筛选隐藏）的组。` : ''))) return
   removeSets(sel.value)
   if (!doc.sets.some((s) => s.id === props.selected)) emit('update:selected', doc.sets[0]?.id || '')
   sel.value = []
@@ -198,7 +205,8 @@ function drop(t: PromptSet) {
     <div class="side-list">
       <div v-for="s in visible" :key="s.id"
         :class="['set-item', { on: s.id === selected, picked: sel.includes(s.id) }]"
-        :draggable="canDrag" @click="onClick(s)" @dragstart="dragId = s.id" @dragover.prevent @drop.prevent="drop(s)">
+        :draggable="canDrag" @click="onClick(s)" @dragstart="dragId = s.id; $event.dataTransfer?.setData('text/plain', s.id)" @dragend="dragId = ''"
+        @dragover.prevent @drop.prevent="drop(s)">
         <input v-if="bulk" type="checkbox" :checked="sel.includes(s.id)" style="width: auto" @click.stop="toggle(s.id)" />
         <div class="thumb">
           <img v-if="s.shots?.length && imgSrc(s.shots[0].id)" :src="imgSrc(s.shots[0].id)" />

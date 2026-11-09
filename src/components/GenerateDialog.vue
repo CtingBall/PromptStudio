@@ -52,7 +52,7 @@ function setAuto(v: boolean) { autoLayout.value = v; localStorage.setItem('ps-au
 // ---- reference images ----
 const images = ref<string[]>([])
 const fileEl = ref<HTMLInputElement>()
-const maxImages = computed(() => Math.max(1, settings().maxImages || 4))
+const maxImages = computed(() => Math.min(8, Math.max(1, settings().maxImages || 4)))
 const layoutBg = ref(true)
 async function addFiles(files: FileList | File[] | null | undefined) {
   if (!files) return
@@ -108,7 +108,7 @@ async function run() {
       outRegions = regions.map((g, i) => ({
         ...g,
         // keep the user's description; append generated tags for regional prompting
-        text: (byId.get(g.id) || r.regions[i]?.tags || []).join(', ') || g.text,
+        text: [g.text.trim(), (byId.get(g.id) || r.regions[i]?.tags || []).join(', ')].filter(Boolean).join(' | '),
       }))
     }
     let outCanvas = outRegions ? { ...canvas } : undefined
@@ -238,7 +238,7 @@ async function run() {
       <p v-if="err" style="color: var(--danger)">{{ err }}</p>
       <div class="row" style="margin-top: 14px">
         <span class="spacer" />
-        <button class="ghost" @click="emit('close')">取消</button>
+        <button class="ghost" :disabled="busy" @click="emit('close')">取消</button>
         <button class="primary" :disabled="!canRun" @click="run">{{ busy ? '生成中…' : '生成' }}</button>
       </div>
     </div>

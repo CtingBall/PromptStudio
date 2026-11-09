@@ -88,7 +88,7 @@ async function doImport() {
           <button :class="{ on: tab === 'import' }" @click="tab = 'import'">导入</button>
         </div>
         <span class="spacer" />
-        <button class="ghost" @click="emit('close')">✕</button>
+        <button class="ghost" :disabled="busy" @click="emit('close')">✕</button>
       </div>
 
       <!-- EXPORT -->

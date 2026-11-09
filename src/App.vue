@@ -52,6 +52,17 @@ async function testConn() {
 }
 
 onMounted(async () => {
+  // store.ts reports save failures (e.g. quota exceeded) through this event
+  window.addEventListener('ps:toast', (e) => flash(String((e as CustomEvent).detail || ''), 5000))
+  // A file dropped outside a drop zone would make the browser navigate away to it.
+  // Zones call preventDefault first (bubbling), so only unclaimed file drags are blocked.
+  const isFiles = (e: DragEvent) => !!e.dataTransfer && Array.from(e.dataTransfer.types).includes('Files')
+  window.addEventListener('dragover', (e) => {
+    if (!isFiles(e) || e.defaultPrevented) return
+    e.preventDefault()
+    e.dataTransfer!.dropEffect = 'none'
+  })
+  window.addEventListener('drop', (e) => { if (isFiles(e)) e.preventDefault() })
   const m = await autoBackupOnUpdate()
   if (m) flash(m)
 })
@@ -78,19 +89,23 @@ function toggleSec(s?: string) {
 function tapVer() { window.dispatchEvent(new Event('ps:ver-tap')) }
 function zoom(d: number) { ui.scale = d ? clampW(ui.scale + d, 70, 150) : 100 }
 
-function flash(msg: string) {
+let toastTimer: number | undefined
+function flash(msg: string, ms = 1800) {
+  clearTimeout(toastTimer)
   toast.value = msg
-  setTimeout(() => (toast.value = ''), 1800)
+  toastTimer = window.setTimeout(() => (toast.value = ''), ms)
 }
 
 const aiRef = ref<InstanceType<typeof AiTools>>()
-function importMeta(m: { positive: string; negative: string }) {
+function importMeta(m: { positive: string; negative: string; shotId?: string; raw?: string }) {
   const s = newSet((current.value?.name || '返图') + ' 图内参数')
   s.tags = tagsFromPrompt(m.positive, lookup)
   s.negative = m.negative
+  // keep the source image as a result shot of the new set (image is shared, deletion is ref-checked)
+  if (m.shotId) s.shots = [{ id: m.shotId, at: Date.now(), meta: m.raw }]
   doc.sets.unshift(s)
   selectedId.value = s.id
-  if (settings().autoTranslate) translateMissing()
+  if (settings().autoTranslate) translateMissing(true)
 }
 const labelText = ref('')
 function addLabel() {
@@ -115,20 +130,45 @@ function delSet(s: PromptSet) {
 }
 
 function onAddTag() {
-  if (!current.value) return
-  const parts = newTagText.value.split(',').map((t) => t.trim()).filter(Boolean)
-  for (const p of parts) addTag(current.value, p)
+  const set = current.value
+  if (!set) return
+  const seen = new Set(set.tags.map((t) => t.en.toLowerCase()))
+  const parts = newTagText.value.split(/[,，\n]/).map((t) => t.trim()).filter(Boolean)
+  let skipped = 0
+  for (const p of parts) {
+    const k = p.toLowerCase()
+    if (seen.has(k)) { skipped++; continue }
+    seen.add(k)
+    addTag(set, p)
+  }
   newTagText.value = ''
-  if (settings().autoTranslate) translateMissing()
+  if (skipped) flash(`已跳过 ${skipped} 个重复标签`)
+  if (settings().autoTranslate) translateMissing(true)
+}
+
+// one-step undo for whole-tag-list rewrites (编辑原文 / 全部重翻)
+const tagUndo = ref<{ id: string; tags: Tag[]; label: string } | null>(null)
+function snapshotTags(set: PromptSet, label: string) {
+  tagUndo.value = { id: set.id, tags: JSON.parse(JSON.stringify(set.tags)), label }
+}
+function undoTags() {
+  const u = tagUndo.value
+  const s = doc.sets.find((x) => x.id === u?.id)
+  if (!u || !s) return
+  s.tags = u.tags
+  touch(s)
+  tagUndo.value = null
+  flash('已撤销' + u.label)
 }
 
 // Pull English tags that lack a Chinese gloss and translate them via Grok,
 // caching results into the shared dictionary.
-async function translateMissing() {
+async function translateMissing(silent = false) {
   const set = current.value
   if (!set) return
+  if (busyMsg.value) { if (!silent) flash('正在执行：' + busyMsg.value); return }
   const pending = set.tags.filter((t) => t.en && !t.zh)
-  if (!pending.length) { flash('没有需要翻译的标签'); return }
+  if (!pending.length) { if (!silent) flash('没有需要翻译的标签'); return }
   busyMsg.value = `翻译 ${pending.length} 个标签…`
   try {
     const map = await translateTags(settings().model, pending.map((t) => t.en))
@@ -145,18 +185,26 @@ async function translateMissing() {
   }
 }
 
+const CHUNK = 60
 async function retranslateAll() {
   const set = current.value
-  if (!set) return
-  busyMsg.value = `重翻 ${set.tags.length} 个标签…`
+  if (!set || !set.tags.length) return
+  if (busyMsg.value) { flash('正在执行：' + busyMsg.value); return }
+  if (!confirm(`重新翻译全部 ${set.tags.length} 个标签？会覆盖现有中文（可撤销一次）。`)) return
+  snapshotTags(set, '全部重翻')
+  const all = set.tags.slice()
   try {
-    const map = await translateTags(settings().model, set.tags.map((t) => t.en))
-    for (const t of set.tags) {
-      const zh = map[t.en] || map[t.en.toLowerCase()]
-      if (zh) { t.zh = zh; remember(t.en, zh) }
+    for (let i = 0; i < all.length; i += CHUNK) {
+      const part = all.slice(i, i + CHUNK)
+      busyMsg.value = `重翻 ${Math.min(i + CHUNK, all.length)}/${all.length} 个标签…`
+      const map = await translateTags(settings().model, part.map((t) => t.en))
+      for (const t of part) {
+        const zh = map[t.en] || map[t.en.toLowerCase()]
+        if (zh) { t.zh = zh; remember(t.en, zh) }
+      }
+      touch(set)
     }
-    touch(set)
-    flash('已重新翻译')
+    flash('已重新翻译（可撤销）')
   } catch (e: any) {
     flash('翻译失败：' + (e?.message || e))
   } finally {
@@ -166,8 +214,12 @@ async function retranslateAll() {
 
 async function copyPrompt(headers = true) {
   if (!current.value) return
-  await navigator.clipboard.writeText(promptText(current.value, headers))
-  flash(headers ? '已复制（带分段标题）' : '已复制（单行）')
+  try {
+    await navigator.clipboard.writeText(promptText(current.value, headers))
+    flash(headers ? '已复制（带分段标题）' : '已复制（单行）')
+  } catch (e: any) {
+    flash('复制失败：' + (e?.message || e))
+  }
 }
 
 // Chips grouped by section so the 【Section】 layout is visible while editing.
@@ -199,6 +251,7 @@ function selectedTags() { return (current.value?.tags || []).filter((t) => tagSe
 function bulkDeleteTags() {
   const set = current.value
   if (!set || !tagSel.value.length) return
+  if (!confirm(`删除选中的 ${tagSel.value.length} 个标签？`)) return
   set.tags = set.tags.filter((t) => !tagSel.value.includes(t.id))
   flash(`已删除 ${tagSel.value.length} 个标签`)
   tagSel.value = []
@@ -285,6 +338,11 @@ function onGroupDragStart(gi: number, e: DragEvent) {
   dragIds = []
   e.dataTransfer?.setData('text/plain', 'group')
 }
+function onDragEnd() {
+  dragIds = []
+  dragGroup = -1
+  dropHint.value = ''
+}
 function onGroupDrop(to: number) {
   const set = current.value
   const from = dragGroup
@@ -309,7 +367,7 @@ function applyGenerated(p: { name: string; prefix: string; sections: GenSection[
   doc.sets.unshift(set)
   selectedId.value = set.id
   showGen.value = false
-  if (settings().autoTranslate) translateMissing()
+  if (settings().autoTranslate) translateMissing(true)
 }
 
 // ---- layout (bboxes) on the current set ----
@@ -333,8 +391,12 @@ function bboxJson(s: PromptSet): string {
 }
 async function copyBboxes() {
   if (!current.value) return
-  await navigator.clipboard.writeText(bboxJson(current.value))
-  flash('已复制框坐标 JSON')
+  try {
+    await navigator.clipboard.writeText(bboxJson(current.value))
+    flash('已复制框坐标 JSON')
+  } catch (e: any) {
+    flash('复制失败：' + (e?.message || e))
+  }
 }
 
 // ---- generate dialog launcher (rewrite mode prefilled with current prompt) ----
@@ -362,11 +424,27 @@ function openRaw() {
   rawEdit.value = true
 }
 function applyRaw() {
-  if (!current.value) return
-  current.value.tags = tagsFromPrompt(rawText.value, lookup)
-  touch(current.value)
+  const set = current.value
+  if (!set) return
+  // keep manual Chinese glosses and notes for words that survive the edit
+  const old = new Map(set.tags.map((t) => [t.en.toLowerCase(), t]))
+  snapshotTags(set, '编辑原文')
+  set.tags = tagsFromPrompt(rawText.value, lookup).map((t) => {
+    const o = old.get(t.en.toLowerCase())
+    return o ? { ...t, zh: o.zh || t.zh, ...(o.note ? { note: o.note } : {}) } : t
+  })
+  touch(set)
   rawEdit.value = false
-  if (settings().autoTranslate) translateMissing()
+  flash('已应用（可撤销）')
+  if (settings().autoTranslate) translateMissing(true)
+}
+
+function dupSet(id: string) {
+  const c = duplicateSet(id)
+  if (c) selectedId.value = c.id
+}
+function clampMaxImages() {
+  doc.settings.maxImages = Math.min(8, Math.max(1, Math.round(Number(doc.settings.maxImages) || 4)))
 }
 </script>
 
@@ -409,7 +487,7 @@ function applyRaw() {
             <option v-for="c in CATEGORIES" :key="c" :value="c">{{ RATING_LABEL[c] }}</option>
           </select>
           <div class="btn-group">
-            <button @click="duplicateSet(current.id)">复制组</button>
+            <button @click="dupSet(current.id)">复制组</button>
             <button class="danger" @click="delSet(current)">删除组</button>
           </div>
         </div>
@@ -417,7 +495,7 @@ function applyRaw() {
           <input v-model="current.folder" list="folder-list" placeholder="📁 文件夹，如 角色/hanabi" style="width: 200px" @change="touch(current!)" />
           <datalist id="folder-list"><option v-for="f in folders" :key="f" :value="f" /></datalist>
           <span v-for="l in current.labels || []" :key="l" class="pill on" title="点击移除" @click="dropLabel(l)">{{ l }} ×</span>
-          <input v-model="labelText" placeholder="＋标签，回车添加" style="width: 130px" @keydown.enter="addLabel" />
+          <input v-model="labelText" placeholder="＋标签，回车添加" style="width: 130px" @keydown.enter="!$event.isComposing && addLabel()" />
         </div>
 
         <section class="section">
@@ -427,9 +505,10 @@ function applyRaw() {
             <span class="badge">{{ current.tags.length }}</span>
             <span class="spacer" />
             <div class="btn-group">
-              <button @click="translateMissing">翻译未译</button>
-              <button @click="retranslateAll">全部重翻</button>
+              <button :disabled="!!busyMsg" @click="translateMissing()">翻译未译</button>
+              <button :disabled="!!busyMsg" @click="retranslateAll">全部重翻</button>
             </div>
+            <button v-if="tagUndo && tagUndo.id === current.id && !busyMsg" class="ghost" @click="undoTags">↶ 撤销{{ tagUndo.label }}</button>
             <div class="btn-group">
               <button @click="openRaw">编辑原文</button>
               <button @click="openGen('rewrite')">AI 改写格式</button>
@@ -464,7 +543,7 @@ function applyRaw() {
 
           <div v-for="(g, gi) in groups" :key="gi" class="tag-group" @dragover.prevent @drop.prevent="onGroupAreaDrop(gi)">
             <div v-if="hasSections" class="row sec-head" draggable="true"
-              @dragstart="onGroupDragStart(gi, $event)" @dblclick="renameSection(g)">
+              @dragstart="onGroupDragStart(gi, $event)" @dragend="onDragEnd" @dblclick="renameSection(g)">
               <span>⠿</span>
               <button class="collapse-btn" :title="secClosed(g.section) ? '展开本区' : '收起本区'" @click.stop="toggleSec(g.section)">{{ secClosed(g.section) ? '▸' : '▾' }}</button>
               <span>【{{ g.section || '无分区' }}】</span>
@@ -478,7 +557,7 @@ function applyRaw() {
             <div v-if="!hasSections || !secClosed(g.section)" class="chip-grid">
               <div v-for="t in g.tags" :key="t.id" draggable="true"
                 :class="['chip-wrap', { sel: tagSel.includes(t.id) }]"
-                @dragstart.stop="onTagDragStart(t, $event)" @dragover.prevent
+                @dragstart.stop="onTagDragStart(t, $event)" @dragend="onDragEnd" @dragover.prevent
                 @drop.prevent.stop="onTagDrop(t, $event)" @click="tagMode && toggleTagSel(t.id)">
                 <TagChip :tag="t" @remove="removeTag(current!, t.id)" @change="touch(current!)" />
               </div>
@@ -486,7 +565,7 @@ function applyRaw() {
           </div>
 
           <div class="row" style="margin-top: 10px">
-            <input v-model="newTagText" placeholder="添加标签，可用逗号一次加多个…" style="flex: 1" @keydown.enter="onAddTag" />
+            <input v-model="newTagText" placeholder="添加标签，可用逗号一次加多个…" style="flex: 1" @keydown.enter="!$event.isComposing && onAddTag()" />
             <button class="primary" @click="onAddTag">添加</button>
           </div>
           <p class="hint">双击中/英文修改（输入框随内容变大，Enter 确认）；拖动标签排序或拖到其他分区；拖动分区标题调整顺序，双击标题改名。</p>
@@ -521,9 +600,9 @@ function applyRaw() {
       </main>
       <main v-else class="main muted" style="display: grid; place-items: center">左侧新建或选择一个提示词组</main>
 
-      <template v-if="current && ui.asideOpen">
-        <div class="splitter right" title="拖动调整宽度，双击恢复" @pointerdown="startAside" @dblclick="ui.asideW = 360" />
-        <aside class="aside">
+      <template v-if="current">
+        <div v-show="ui.asideOpen" class="splitter right" title="拖动调整宽度，双击恢复" @pointerdown="startAside" @dblclick="ui.asideW = 360" />
+        <aside v-show="ui.asideOpen" class="aside">
           <Gallery :set="current" @toast="flash" @review="aiRef?.reviewImage($event)"
             @reverse="aiRef?.reverseImage($event)" @import-meta="importMeta" />
           <AiTools ref="aiRef" :set="current" @toast="flash" @select="selectedId = $event" />
@@ -534,7 +613,7 @@ function applyRaw() {
     <div v-if="toast" class="toast">{{ toast }}</div>
 
     <!-- raw edit modal -->
-    <div v-if="rawEdit" class="modal-mask" @click.self="rawEdit = false">
+    <div v-if="rawEdit" class="modal-mask">
       <div class="modal">
         <h3 style="margin-top: 0">编辑原文提示词</h3>
         <p class="muted">直接修改逗号分隔的提示词，可保留【分段】标题，应用后会重新拆成标签。</p>
@@ -577,7 +656,7 @@ function applyRaw() {
           </label>
           <label>
             每次最多参考图数量（需要能看图的模型，如 grok-4 系列）
-            <input v-model.number="doc.settings.maxImages" type="number" min="1" max="10" style="width: 80px; margin-left: 6px" />
+            <input v-model.number="doc.settings.maxImages" type="number" min="1" max="8" style="width: 80px; margin-left: 6px" @change="clampMaxImages" />
           </label>
           <label>
             框坐标 JSON 格式
