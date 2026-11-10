@@ -29,7 +29,7 @@ export interface Region {
   w: number
   h: number
   text: string   // what is inside the box (user description or generated tags)
-  kind?: 'obj' | 'char' | 'text'   // ComfyUI MOSS layout label: object (default) / character / rendered text
+  kind?: 'obj' | 'char' | 'text' | 'panel'   // MOSS layout: object (default) / character / text / comic panel (exported as object)
   cid?: string    // char box: character id (A/B/…)
   speaker?: string // text box: id of the character who says it
   desc?: string   // text box: bubble/style description (text holds the words)

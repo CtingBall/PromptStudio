@@ -5,7 +5,7 @@ import { doc, settings } from '../lib/store'
 import { DEFAULT_GEN_PREFIX, DEFAULT_GEN_NEGATIVE, type Region, type Char } from '../lib/types'
 import { fileToDataUrl } from '../lib/image'
 import LayoutPanel from './LayoutPanel.vue'
-import { parseChars, boxesToRegions } from '../lib/layout'
+import { parseChars, boxesToRegions, checkLayout } from '../lib/layout'
 
 export interface GenPayload {
   name: string
@@ -120,6 +120,8 @@ async function run() {
     } else if (useAuto.value) {
       err.value = '模型没给布局，已只生成提示词'
     }
+    const warn = outRegions ? checkLayout(outRegions) : []
+    if (warn.length) window.dispatchEvent(new CustomEvent('ps:toast', { detail: '布局检查：' + warn.join('；') }))
     const nameSrc = r.name || mainText.value || (mode.value === 'layout' ? '布局' : '参考图生成')
     emit('apply', {
       name: nameSrc.replace(/\s+/g, ' ').slice(0, 20),

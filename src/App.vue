@@ -21,6 +21,7 @@ import { lookup } from './lib/store'
 import type { PromptSet, Tag, Region, Char } from './lib/types'
 import { CATEGORIES, RATING_LABEL } from './lib/types'
 import LayoutPanel from './components/LayoutPanel.vue'
+import { checkLayout } from './lib/layout'
 import { elementsJson, injectWorkflow, loadTemplate, saveTemplate, download } from './lib/comfy'
 import type { GenMode } from './lib/translate'
 import type { GenSection } from './lib/translate'
@@ -407,7 +408,8 @@ async function copyComfy() {
   if (!current.value) return
   try {
     await navigator.clipboard.writeText(elementsJson(current.value))
-    flash('已复制：粘进文本节点 → 接到 Create Bounding Boxes 的 bboxes', 3500)
+    const w = checkLayout(current.value.regions || [])
+    flash('已复制：粘进文本节点 → 接到 Create Bounding Boxes 的 bboxes' + (w.length ? '。⚠ ' + w.join('；') : ''), w.length ? 7000 : 3500)
   } catch (e: any) {
     flash('复制失败：' + (e?.message || e))
   }
@@ -443,7 +445,8 @@ async function exportComfy(change = false) {
     const r = injectWorkflow(comfyTpl.value!.json, s, promptText(s, false))
     const base = comfyTpl.value!.name.replace(/\.json$/i, '')
     download(`${base}_${(s.name || 'layout').replace(/[\\/:*?"<>|\s]+/g, '_').slice(0, 30)}.json`, r.json)
-    flash('已导出，拖进 ComfyUI 即可。' + r.log.join('；'), 6000)
+    const w = checkLayout(s.regions || [])
+    flash('已导出，拖进 ComfyUI 即可。' + r.log.join('；') + (w.length ? '。⚠ ' + w.join('；') : ''), w.length ? 8000 : 6000)
   } catch (e: any) {
     flash('导出失败：' + (e?.message || e), 4000)
   }
