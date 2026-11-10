@@ -1,21 +1,66 @@
 {
   "name": "prompt-studio",
-  "version": "0.0.5",
+  "version": "0.1.0",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "app": "electron . --dev",
     "build": "vue-tsc -b && vite build",
+    "dist": "vue-tsc -b && vite build && electron-builder --win --publish never",
+    "release": "vue-tsc -b && vite build && electron-builder --win --publish always",
     "preview": "vite preview"
   },
   "dependencies": {
-    "vue": "^3.5.13"
+    "electron-updater": "^6.8.11"
   },
   "devDependencies": {
     "@types/node": "^26.6.6",
     "@vitejs/plugin-vue": "^5.2.1",
+    "electron": "^45.2.3",
+    "electron-builder": "^26.18.0",
     "typescript": "~5.7.3",
     "vite": "^6.0.7",
+    "vue": "^3.5.13",
     "vue-tsc": "^2.2.0"
+  },
+  "description": "提示词管理 / 翻译 / AI 生成 / ComfyUI 画框布局",
+  "author": "水千夏",
+  "main": "electron/main.cjs",
+  "build": {
+    "appId": "com.ctingball.promptstudio",
+    "productName": "PromptStudio",
+    "files": [
+      "dist/**",
+      "electron/**",
+      "build/icon.png",
+      "package.json"
+    ],
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "win": {
+      "target": "nsis",
+      "icon": "build/icon.png",
+      "artifactName": "PromptStudio-Setup-${version}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "PromptStudio",
+      "deleteAppDataOnUninstall": false
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "CtingBall",
+        "repo": "PromptStudio",
+        "releaseType": "release"
+      }
+    ]
   }
 }

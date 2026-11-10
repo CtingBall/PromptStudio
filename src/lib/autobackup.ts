@@ -19,9 +19,17 @@ export async function backupAll(): Promise<number> {
 
 // Call once on startup. If the stored app version differs from the running one
 // and there is real data, drop a backup file first, then stamp the new version.
+// true inside the desktop app (Electron serves the UI from app://)
+export const IS_DESKTOP = location.protocol === 'app:'
+
 export async function autoBackupOnUpdate(): Promise<string> {
   const seen = localStorage.getItem(KEY)
   if (seen === APP_VERSION) return ''
+  if (IS_DESKTOP) {
+    // installer updates keep the data folder; no download dialog needed
+    try { localStorage.setItem(KEY, APP_VERSION) } catch {}
+    return seen ? `已更新到 ${APP_VERSION}` : '欢迎使用 PromptStudio 桌面版。用过网页版的话：在网页版设置里「备份全部数据」，再在这里点「导入」。'
+  }
   let msg = ''
   try {
     if (seen && doc.sets.length) {
