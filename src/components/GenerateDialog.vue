@@ -2,10 +2,10 @@
 import { ref, reactive, computed } from 'vue'
 import { generateSet, type GenSection, type GenMode } from '../lib/translate'
 import { doc, settings } from '../lib/store'
-import { DEFAULT_GEN_PREFIX, DEFAULT_GEN_NEGATIVE, type Region } from '../lib/types'
+import { DEFAULT_GEN_PREFIX, DEFAULT_GEN_NEGATIVE, type Region, type Char } from '../lib/types'
 import { fileToDataUrl } from '../lib/image'
 import LayoutPanel from './LayoutPanel.vue'
-import { uid } from '../lib/tags'
+import { parseChars, boxesToRegions } from '../lib/layout'
 
 export interface GenPayload {
   name: string
@@ -14,6 +14,7 @@ export interface GenPayload {
   negative: string[]
   regions?: Region[]
   canvas?: { w: number; h: number }
+  chars?: Char[]
 }
 
 const props = defineProps<{ initialRaw?: string; initialMode?: GenMode }>()
@@ -38,6 +39,7 @@ const busy = ref(false)
 const err = ref('')
 const showInject = ref(false)
 const removed = ref<string[]>([])
+const chars = computed(() => parseChars(doc.settings.genChars || ''))
 
 // ---- optional: AI designs a grid layout too (theme / rewrite modes) ----
 const autoLayout = ref(localStorage.getItem('ps-auto-layout') === '1')
@@ -98,31 +100,24 @@ async function run() {
       canvas: mode.value === 'layout' ? canvas : useAuto.value ? SIZES[autoSize.value] : undefined,
       autoLayout: useAuto.value,
       grid: autoGrid.value,
+      chars: chars.value,
     }, { temperature: temp.value, rules: s.genRules, banIdentity: s.banIdentity })
     if (!r.sections.length) throw new Error('模型没有返回可用的标签，请重试或换个模型')
     removed.value = r.removed
     const neg = [...s.genNegative.split(',').map((t) => t.trim()).filter(Boolean), ...r.negative]
     let outRegions: Region[] | undefined
+    let outCanvas: { w: number; h: number } | undefined
     if (mode.value === 'layout' && regions.length) {
-      const byId = new Map(r.regions.map((x) => [x.id, x.tags]))
-      outRegions = regions.map((g, i) => ({
-        ...g,
-        // keep the user's description; append generated tags for regional prompting
-        text: [g.text.trim(), (byId.get(g.id) || r.regions[i]?.tags || []).join(', ')].filter(Boolean).join(' | '),
-      }))
-    }
-    let outCanvas = outRegions ? { ...canvas } : undefined
-    if (!outRegions && useAuto.value && r.boxes.length) {
-      const g = autoGrid.value
-      const sn = (v: number) => (g ? Math.round(v * g) / g : v)
-      outRegions = r.boxes.map((b) => {
-        const x = sn(b.x), y = sn(b.y)
-        const w = Math.max(g ? 1 / g : 0.05, Math.min(1 - x, sn(b.w)))
-        const h = Math.max(g ? 1 / g : 0.05, Math.min(1 - y, sn(b.h)))
-        return { id: uid('r'), x, y, w, h, text: b.tags.join(', ') }
-      })
+      // AI rewrites each box by spec; coords stay as drawn (matched by n)
+      outRegions = r.boxes.length ? boxesToRegions(r.boxes, 0, regions)
+        : regions.map((g) => ({ ...g }))
+      // keep boxes the AI forgot
+      for (const g of regions) if (!outRegions.some((x) => x.id === g.id)) outRegions.push({ ...g })
+      outCanvas = { ...canvas }
+    } else if (useAuto.value && r.boxes.length) {
+      outRegions = boxesToRegions(r.boxes, autoGrid.value)
       outCanvas = { w: SIZES[autoSize.value].w, h: SIZES[autoSize.value].h }
-    } else if (!outRegions && useAuto.value) {
+    } else if (useAuto.value) {
       err.value = '模型没给布局，已只生成提示词'
     }
     const nameSrc = r.name || mainText.value || (mode.value === 'layout' ? '布局' : '参考图生成')
@@ -133,6 +128,7 @@ async function run() {
       negative: Array.from(new Map(neg.map((t) => [t.toLowerCase(), t])).values()),
       regions: outRegions,
       canvas: outCanvas,
+      chars: chars.value.length ? chars.value : undefined,
     })
   } catch (e: any) {
     err.value = e?.message || String(e)
@@ -161,7 +157,7 @@ async function run() {
       <template v-else>
         <textarea v-model="scene" rows="2" placeholder="整体画面描述（可选），例如「夜晚废墟，少女站在左侧仰望右上角的满月」" />
         <div style="margin-top: 8px">
-          <LayoutPanel :regions="regions" :canvas="canvas" :background="layoutBg ? images[0] : undefined" />
+          <LayoutPanel :regions="regions" :canvas="canvas" :chars="chars" :background="layoutBg ? images[0] : undefined" />
         </div>
       </template>
 
@@ -202,6 +198,14 @@ async function run() {
             </select></label>
           <span class="muted" style="font-size: 12px">生成后可在「画框布局」里继续拖动调整</span>
         </template>
+      </div>
+
+      <div style="margin-top: 10px">
+        <label class="muted" style="font-size: 12px">画面角色 / 角色 LoRA（每行一个：名字=触发词，没有 LoRA 只写名字；会按 A、B、C 区分，对话框会对应到说话人）</label>
+        <textarea v-model="doc.settings.genChars" rows="2" placeholder="花火=hanabi&#10;狐耳少女=sqxMOSS" />
+        <div v-if="chars.length" class="muted" style="font-size: 12px">
+          <span v-for="c in chars" :key="c.id" style="margin-right: 10px">{{ c.id }}：{{ c.name }}{{ c.trigger ? '（' + c.trigger + '）' : '' }}</span>
+        </div>
       </div>
 
       <div class="row" style="margin-top: 10px">

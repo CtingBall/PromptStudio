@@ -136,7 +136,7 @@ const pct = (v: number) => `${v * 100}%`
       :style="{ left: pct(r.x), top: pct(r.y), width: pct(r.w), height: pct(r.h), borderColor: color(i), background: color(i).replace(')', ' / .14)') }"
       @pointerdown="onBoxDown(r, $event)"
     >
-      <span class="bbox-label" :style="{ background: color(i) }">#{{ i + 1 }} {{ r.text.slice(0, 24) }}</span>
+      <span class="bbox-label" :style="{ background: color(i) }">#{{ i + 1 }} {{ r.kind === 'char' ? '👤' + (r.cid || '') + ' ' : r.kind === 'text' ? '💬' + (r.speaker || '') + ' ' : '' }}{{ r.text.slice(0, 24) }}</span>
       <template v-if="r.id === selected">
         <i v-for="c in ['nw', 'ne', 'sw', 'se']" :key="c" :class="['bbox-h', c]" @pointerdown="onHandleDown(r, c, $event)" />
       </template>

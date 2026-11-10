@@ -18,7 +18,7 @@ import { translateTags } from './lib/translate'
 import { chat } from './lib/grok'
 import { tagsFromPrompt, groupTags } from './lib/tags'
 import { lookup } from './lib/store'
-import type { PromptSet, Tag, Region } from './lib/types'
+import type { PromptSet, Tag, Region, Char } from './lib/types'
 import { CATEGORIES, RATING_LABEL } from './lib/types'
 import LayoutPanel from './components/LayoutPanel.vue'
 import { elementsJson, injectWorkflow, loadTemplate, saveTemplate, download } from './lib/comfy'
@@ -360,9 +360,10 @@ function moveGroup(gi: number, d: number) {
   onGroupDrop(gi + d)
 }
 
-function applyGenerated(p: { name: string; prefix: string; sections: GenSection[]; negative: string[]; regions?: Region[]; canvas?: { w: number; h: number } }) {
+function applyGenerated(p: { name: string; prefix: string; sections: GenSection[]; negative: string[]; regions?: Region[]; canvas?: { w: number; h: number }; chars?: Char[] }) {
   const set = newSet(p.name || '生成')
   if (p.regions?.length) { set.regions = p.regions; set.canvas = p.canvas; showLayout.value = true }
+  if (p.chars?.length) set.chars = p.chars
   set.tags = buildTags(p.prefix, p.sections)
   set.negative = p.negative.join(', ')
   doc.sets.unshift(set)
@@ -632,7 +633,7 @@ function clampMaxImages() {
             <button v-if="comfyTpl" class="ghost" title="更换模板工作流" @click="exportComfy(true)">换模板</button>
             <button class="ghost" @click="showLayout = false">收起</button>
           </div>
-          <LayoutPanel :regions="current.regions" :canvas="current.canvas" @change="touch(current!)" />
+          <LayoutPanel :regions="current.regions" :canvas="current.canvas" :chars="current.chars" @change="touch(current!)" />
         </section>
 
         <section class="section">

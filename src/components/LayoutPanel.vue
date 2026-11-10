@@ -4,15 +4,28 @@
 // generate dialog).
 import { ref, computed } from 'vue'
 import BBoxEditor from './BBoxEditor.vue'
-import type { Region } from '../lib/types'
+import type { Region, Char } from '../lib/types'
 import { describeBox } from '../lib/translate'
 
 const props = defineProps<{
   regions: Region[]
   canvas: { w: number; h: number }
   background?: string
+  chars?: Char[]
 }>()
 const emit = defineEmits<{ (e: 'change'): void }>()
+// character ids available for char / speaker selects
+const cids = computed(() => {
+  const ids = new Set<string>(['A', 'B', 'C', 'D'])
+  for (const c of props.chars || []) ids.add(c.id)
+  for (const r of props.regions) if (r.cid) ids.add(r.cid)
+  return [...ids].sort()
+})
+const cname = (id: string) => props.chars?.find((c) => c.id === id)?.name
+function setKind(r: Region) {
+  if (r.kind === 'char' && !r.cid) r.cid = cids.value.find((id) => !props.regions.some((x) => x.cid === id)) || 'A'
+  emit('change')
+}
 
 // Aspect ratio + total pixels → size rounded to multiples of 16.
 const RATIOS: Array<[string, number, number]> = [
@@ -95,11 +108,19 @@ function onKey(e: KeyboardEvent) {
         @click="selected = r.id">
         <span class="badge" :style="{ color: `hsl(${(i * 67) % 360} 85% 60%)` }">#{{ i + 1 }}</span>
         <span class="muted" style="font-size: 12px; width: 120px">{{ describeBox(r) }}</span>
-        <select v-model="r.kind" style="width: auto" title="ComfyUI MOSS 标签：物体 / 角色 / 文字" @change="emit('change')">
+        <select v-model="r.kind" style="width: auto" title="ComfyUI MOSS 标签：物体 / 角色 / 文字" @change="setKind(r)">
           <option :value="undefined">物体</option>
           <option value="char">角色</option>
           <option value="text">文字</option>
         </select>
+        <select v-if="r.kind === 'char'" v-model="r.cid" style="width: auto" title="这是哪个角色" @change="emit('change')">
+          <option v-for="id in cids" :key="id" :value="id">{{ id }}{{ cname(id) ? ' ' + cname(id) : '' }}</option>
+        </select>
+        <select v-if="r.kind === 'text'" v-model="r.speaker" style="width: auto" title="谁说的（招牌/标题选「无」）" @change="emit('change')">
+          <option :value="undefined">无人说</option>
+          <option v-for="id in cids" :key="id" :value="id">{{ id }}{{ cname(id) ? ' ' + cname(id) : '' }} 说</option>
+        </select>
+        <input v-if="r.kind === 'text'" v-model="r.desc" placeholder="气泡样式（可空）" style="width: 140px" @change="emit('change')" />
         <input v-model="r.text" :placeholder="r.kind === 'text' ? '要画出来的文字，例如：MOSS' : '框里有什么，例如：持剑少女 / 满月 / 倒塌的钟楼'" style="flex: 1" @change="emit('change')" />
         <button class="ghost danger" style="padding: 0 6px" @click.stop="remove(r.id)">×</button>
       </div>

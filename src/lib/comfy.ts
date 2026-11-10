@@ -2,16 +2,22 @@
 // Element format (read by CreateBoundingBoxes' "bboxes" input, see comfy_extras/nodes_bounding_boxes.py):
 //   [{type:'obj'|'text', bbox:[ymin,xmin,ymax,xmax] (0–1000), desc, text?}]
 // Normalized coords are resolution-independent, so the workflow's own width/height still apply.
-import type { PromptSet, Region } from './types'
+import type { Char, PromptSet, Region } from './types'
+import { textBoxDesc } from './layout'
 
 export interface ComfyElement { type: 'obj' | 'text'; bbox: number[]; desc: string; text?: string }
 
 const g = (v: number) => Math.max(0, Math.min(1000, Math.round(v * 1000)))
 
-export function regionsToElements(regions: Region[]): ComfyElement[] {
+// caption sent for a box
+export function boxDesc(r: Region, all: Region[], chars?: Char[]): string {
+  return r.kind === 'text' ? textBoxDesc(r, all, chars) : r.text
+}
+
+export function regionsToElements(regions: Region[], chars?: Char[]): ComfyElement[] {
   return regions.map((r) => {
     const bbox = [g(r.y), g(r.x), g(r.y + r.h), g(r.x + r.w)]
-    if (r.kind === 'text') return { type: 'text', bbox, text: r.text, desc: `text "${r.text}"` }
+    if (r.kind === 'text') return { type: 'text', bbox, text: r.text, desc: boxDesc(r, regions, chars) }
     return { type: 'obj', bbox, desc: r.text }
   })
 }
@@ -22,7 +28,7 @@ export function characterBoxes(regions: Region[]): string {
 }
 
 export function elementsJson(s: PromptSet): string {
-  return JSON.stringify(regionsToElements(s.regions || []), null, 2)
+  return JSON.stringify(regionsToElements(s.regions || [], s.chars), null, 2)
 }
 
 // ---------- workflow injection ----------
@@ -120,7 +126,7 @@ export function injectWorkflow(template: string, s: PromptSet, prompt: string): 
   const wf = JSON.parse(template)
   const log: string[] = []
   const regions = s.regions || []
-  const els = regionsToElements(regions)
+  const els = regionsToElements(regions, s.chars)
   const elText = JSON.stringify(els)
 
   // --- CreateBoundingBoxes ---
@@ -144,7 +150,7 @@ export function injectWorkflow(template: string, s: PromptSet, prompt: string): 
   wv[2] = regions.map((r) => ({
     x: Math.round(r.x * cw), y: Math.round(r.y * ch), width: Math.round(r.w * cw), height: Math.round(r.h * ch),
     metadata: { type: r.kind === 'text' ? 'text' : 'obj', text: r.kind === 'text' ? r.text : '',
-      desc: r.kind === 'text' ? `text "${r.text}"` : r.text, palette: [] },
+      desc: boxDesc(r, regions, s.chars), palette: [] },
   }))
   wv[3] = [] // last_incoming empty → next run re-initializes from the bboxes input
 

@@ -6,7 +6,9 @@
 import { ref } from 'vue'
 import type { PromptSet, Tag } from '../lib/types'
 import { doc, touch, promptText, buildTags, dedupe, settings, newSet, folders, allLabels } from '../lib/store'
-import { aiEdit, aiVariants, aiClassify, aiReview, aiCritique, translateSetMissing, QUICK_ACTIONS, type ReviewResult } from '../lib/ai'
+import { aiEdit, aiVariants, aiClassify, aiReview, aiCritique, translateSetMissing, QUICK_ACTIONS, ctxOf, type ReviewResult } from '../lib/ai'
+import { boxesToRegions } from '../lib/layout'
+import type { Region } from '../lib/types'
 import { generateSet, type GenResult } from '../lib/translate'
 import { getImage } from '../lib/imagedb'
 
@@ -14,10 +16,10 @@ const props = defineProps<{ set: PromptSet }>()
 const emit = defineEmits<{ (e: 'select', id: string): void; (e: 'toast', msg: string): void }>()
 
 const instruction = ref('')
-const nVar = ref(3)
+const nVar = ref(1)
 const busy = ref('')
 const note = ref('')
-const undo = ref<{ id: string; tags: Tag[]; negative: string; name: string } | null>(null)
+const undo = ref<{ id: string; tags: Tag[]; negative: string; name: string; regions?: Region[] } | null>(null)
 const review = ref<ReviewResult | null>(null)
 const reviewSet = ref<PromptSet | null>(null) // the set the current review was made for
 
@@ -34,8 +36,10 @@ function withNeg(base: string, r: GenResult) { return dedupe([...base.split(',')
 
 function apply(set: PromptSet, r: GenResult) {
   if (!r.sections.length) throw new Error('模型没有返回可用的标签')
-  undo.value = { id: set.id, tags: JSON.parse(JSON.stringify(set.tags)), negative: set.negative, name: set.name }
+  undo.value = { id: set.id, tags: JSON.parse(JSON.stringify(set.tags)), negative: set.negative, name: set.name,
+    regions: set.regions ? JSON.parse(JSON.stringify(set.regions)) : undefined }
   set.tags = buildTags(settings().genPrefix, r.sections)
+  if (set.regions?.length && r.boxes.length) set.regions = boxesToRegions(r.boxes, 0)
   if (r.negative.length) set.negative = withNeg(settings().genNegative, r)
   if (r.name && /^(未命名|生成|示例|返图|布局|参考图)/.test(set.name)) set.name = r.name
   touch(set)
@@ -49,6 +53,7 @@ function undoLast() {
   s.tags = u.tags
   s.negative = u.negative
   s.name = u.name
+  if (u.regions) s.regions = u.regions
   touch(s)
   undo.value = null
 }
@@ -60,18 +65,23 @@ function addSetFrom(from: PromptSet, r: GenResult, name: string): PromptSet {
   s.category = from.category
   s.folder = from.folder
   s.labels = from.labels ? [...from.labels] : undefined
+  if (from.regions?.length) {
+    s.regions = r.boxes.length ? boxesToRegions(r.boxes, 0) : JSON.parse(JSON.stringify(from.regions))
+    s.canvas = from.canvas ? { ...from.canvas } : undefined
+  }
+  if (from.chars) s.chars = JSON.parse(JSON.stringify(from.chars))
   doc.sets.unshift(s)
   if (settings().autoTranslate) translateSetMissing(s).catch(() => {})
   return s
 }
 
 const run = (text: string) => job('AI 修改', async (set) => {
-  apply(set, await aiEdit(promptText(set, true), set.negative, text))
+  apply(set, await aiEdit(promptText(set, true), set.negative, text, undefined, 0.5, ctxOf(set)))
 })
 const variants = () => job('生成变体', async (set) => {
   const n = Math.min(8, Math.max(1, Math.round(Number(nVar.value) || 1)))
   nVar.value = n
-  const rs = await aiVariants(promptText(set, true), set.negative, n, instruction.value.trim())
+  const rs = await aiVariants(promptText(set, true), set.negative, n, instruction.value.trim(), ctxOf(set))
   if (!rs.length) throw new Error('没有成功的变体')
   rs.forEach((r, i) => addSetFrom(set, r, `${set.name} 变体${i + 1}`))
   emit('toast', `已新建 ${rs.length} 个变体组`)
@@ -87,7 +97,7 @@ const classify = () => job('AI 整理', async (set) => {
 })
 const critique = () => job('提示词诊断', async (set) => {
   reviewSet.value = set
-  review.value = await aiCritique(promptText(set, true), set.negative)
+  review.value = await aiCritique(promptText(set, true), set.negative, ctxOf(set))
 })
 
 // called from App when the gallery asks for it
@@ -96,7 +106,7 @@ function reviewImage(id: string) {
     const img = await getImage(id)
     if (!img) throw new Error('找不到图片')
     reviewSet.value = set
-    review.value = await aiReview(promptText(set, true), set.negative, img)
+    review.value = await aiReview(promptText(set, true), set.negative, img, ctxOf(set))
   })
 }
 function reverseImage(id: string) {

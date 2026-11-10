@@ -4,7 +4,7 @@
 //  2) GitHub Gist: optional, uses the user's own GitHub token to publish a
 //     secret gist; anyone with the link can import it (reading needs no token).
 // Images and settings (API address / key) are never included.
-import type { PromptSet, Tag, Region, Category } from './types'
+import type { PromptSet, Tag, Region, Category, Char } from './types'
 import { CATEGORIES } from './types'
 import { uid } from './tags'
 
@@ -15,7 +15,7 @@ const TOKEN_KEY = 'prompt-studio-gist-token' // kept apart from doc so it is nev
 interface SlimSet {
   name: string; category?: Category; folder?: string; labels?: string[]
   tags: Array<{ en: string; zh?: string; w?: number; s?: string }>
-  negative?: string; regions?: Array<Omit<Region, 'id'>>; canvas?: { w: number; h: number }
+  negative?: string; regions?: Array<Omit<Region, 'id'>>; canvas?: { w: number; h: number }; chars?: Char[]
 }
 interface Pack { app: 'prompt-studio'; v: 1; sets: SlimSet[] }
 
@@ -27,7 +27,8 @@ function slim(s: PromptSet, o: ShareOpts = DEFAULT_SHARE): SlimSet {
     name: s.name, category: s.category, folder: o.meta ? s.folder || undefined : undefined, labels: o.meta && s.labels?.length ? s.labels : undefined,
     tags: s.tags.map((t) => ({ en: t.en, zh: o.zh ? t.zh || undefined : undefined, w: t.weight !== 1 ? t.weight : undefined, s: t.section || undefined })),
     negative: s.negative || undefined,
-    regions: o.regions && s.regions?.length ? s.regions.map(({ x, y, w, h, text }) => ({ x, y, w, h, text })) : undefined,
+    regions: o.regions && s.regions?.length ? s.regions.map(({ x, y, w, h, text, kind, cid, speaker, desc }) => ({ x, y, w, h, text, kind, cid, speaker, desc })) : undefined,
+    chars: o.regions && s.chars?.length ? s.chars : undefined,
     canvas: o.regions && s.regions?.length ? s.canvas : undefined,
   }
 }
@@ -72,7 +73,9 @@ function toSets(obj: any): PromptSet[] {
     }).filter((t: Tag) => t.en)
     const regions: Region[] = (Array.isArray(s?.regions) ? s.regions : []).slice(0, 50).map((r: any) => {
       const x = num01(r?.x), y = num01(r?.y)
-      return { id: uid('r'), x, y, w: Math.min(1 - x, num01(r?.w)), h: Math.min(1 - y, num01(r?.h)), text: str(r?.text, 1000) }
+      return { id: uid('r'), x, y, w: Math.min(1 - x, num01(r?.w)), h: Math.min(1 - y, num01(r?.h)), text: str(r?.text, 1000),
+        kind: r?.kind === 'char' || r?.kind === 'text' ? r.kind : undefined,
+        cid: str(r?.cid, 4) || undefined, speaker: str(r?.speaker, 4) || undefined, desc: str(r?.desc, 600) || undefined }
     })
     const cw = Number(s?.canvas?.w), ch = Number(s?.canvas?.h)
     return {
@@ -82,6 +85,7 @@ function toSets(obj: any): PromptSet[] {
       labels: Array.isArray(s?.labels) ? s.labels.map((l: unknown) => str(l, 40)).filter(Boolean).slice(0, 30) : undefined,
       tags, negative: str(s?.negative, 4000),
       regions: regions.length ? regions : undefined,
+      chars: Array.isArray(s?.chars) ? s.chars.slice(0, 8).map((c: any) => ({ id: str(c?.id, 4), name: str(c?.name, 40), trigger: str(c?.trigger, 80) || undefined })).filter((c: Char) => c.id && c.name) : undefined,
       canvas: regions.length && cw > 0 && ch > 0 && cw <= 8192 && ch <= 8192 ? { w: Math.round(cw), h: Math.round(ch) } : regions.length ? { w: 1024, h: 1024 } : undefined,
       createdAt: now, updatedAt: now,
     }

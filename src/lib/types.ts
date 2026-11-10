@@ -30,7 +30,13 @@ export interface Region {
   h: number
   text: string   // what is inside the box (user description or generated tags)
   kind?: 'obj' | 'char' | 'text'   // ComfyUI MOSS layout label: object (default) / character / rendered text
+  cid?: string    // char box: character id (A/B/…)
+  speaker?: string // text box: id of the character who says it
+  desc?: string   // text box: bubble/style description (text holds the words)
 }
+
+// A character in the picture; trigger = LoRA trigger word (optional).
+export interface Char { id: string; name: string; trigger?: string }
 
 export interface PromptSet {
   id: string
@@ -42,6 +48,7 @@ export interface PromptSet {
   shots?: Shot[]                        // result images; shots[0] is the cover
   regions?: Region[]                    // bbox / grid regions, coords normalized 0–1
   canvas?: { w: number; h: number }     // target image size for the regions
+  chars?: Char[]                        // characters (A/B/…) used by layout boxes
   tags: Tag[]
   negative: string
   createdAt: number
@@ -68,6 +75,7 @@ export interface Settings {
   banIdentity: boolean   // strip hair color / eye color / ears (for character LoRAs)
   maxImages: number      // reference images per request (xAI vision accepts several)
   bboxScale: 1 | 1000    // bbox output coordinate scale: 0–1 floats or 0–1000 ints
+  genChars: string       // character LoRAs, one per line: 名字=触发词
 }
 
 export const DEFAULT_GEN_PREFIX =
@@ -88,6 +96,7 @@ export const DEFAULT_SETTINGS: Settings = {
   banIdentity: true,
   maxImages: 4,
   bboxScale: 1000,
+  genChars: '',
 }
 
 // Section order used for generation (matches the user's template).

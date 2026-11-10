@@ -1,6 +1,8 @@
 import { chat, extractJson } from './grok'
 import { GEN_SECTIONS, type Region } from './types'
 import { sanitizeIdentity } from './tags'
+import { LAYOUT_SPEC, LAYOUT_SCHEMA, charsText, layoutText, parseLayout, type LayoutBox } from './layout'
+import type { Char } from './types'
 
 // System prompt framing the model as a literal terminology translator for
 // Danbooru-style image-generation tags. This keeps translation literal and
@@ -124,7 +126,7 @@ export interface GenResult {
   negative: string[]
   removed: string[] // tags dropped/changed by the identity filter, for display
   regions: Array<{ id: string; tags: string[] }> // per-box tags (layout mode)
-  boxes: Array<{ x: number; y: number; w: number; h: number; tags: string[] }> // AI-designed layout (autoLayout)
+  boxes: LayoutBox[] // AI-designed / refined layout
 }
 
 export type GenMode = 'theme' | 'rewrite' | 'layout'
@@ -136,6 +138,7 @@ export interface GenInput {
   canvas?: { w: number; h: number }
   autoLayout?: boolean         // optional: let the AI also design a grid layout of boxes
   grid?: number                // snap divisions for the AI layout
+  chars?: Char[]               // characters / LoRA triggers
 }
 
 // Plain-language position of a box, so the model gets both numbers and words.
@@ -165,20 +168,22 @@ function buildUser(input: GenInput): string {
 ${input.text}`)
   } else {
     parts.push(`按下面的画面布局生成。整体描述：${input.text || '（无，按各区域内容推断）'}
-${regionsText(input.regions || [], input.canvas || { w: 1024, h: 1024 })}
+${layoutText(input.regions || [], input.canvas || { w: 1024, h: 1024 })}
 要求：
-- 各 section 里用构图标签体现位置关系（如 character on the left side, moon in the upper right corner, foreground, background）。
-- 另外输出 "regions": [{"id": "框的id", "tags": ["..."]}]，每个框 3–8 个英文标签，只描述框内的东西，用于区域提示词。`)
+- 按规范把每个框补写成完整描述（只改写内容，坐标保持不变；用 n 对应现有框）。框里写的中文意思要保留并翻成英文展开。
+- 用户写的对话保持原文放进 text；能判断说话人就填 speaker。
+- 输出 ${LAYOUT_SCHEMA}，必须包含所有现有框。
+${LAYOUT_SPEC}`)
   }
   if (input.autoLayout && input.mode !== 'layout') {
     const c = input.canvas || { w: 832, h: 1216 }
     const g = input.grid || 8
-    parts.push(`另外请为这幅画设计构图布局（画布 ${c.w}×${c.h}）。输出 "layout": [{"x":0,"y":0,"w":0,"h":0,"tags":["..."]}]：
-- 2–6 个框，坐标是画布比例（0–1，(0,0) 左上角），尽量对齐 ${g}×${g} 网格（即取 1/${g} 的倍数）。
-- 每个框是画面中的一个主要元素（主体人物、次要角色、重要物件、天空/背景区域等），主体框最大。
-- 每个框 3–8 个英文标签，只描述框内的东西；框可以部分重叠，但不要完全相同。
-- 各 section 里也要用构图标签体现这些位置关系。`)
+    parts.push(`另外请为这幅画设计构图布局（画布 ${c.w}×${c.h}），尽量对齐 ${g}×${g} 网格（取 1/${g} 的倍数）。
+- 2–8 个框；主题里有对话就为每句对话做文字框并标明 speaker。
+- 输出 ${LAYOUT_SCHEMA}
+${LAYOUT_SPEC}`)
   }
+  if (input.chars?.length) parts.push(charsText(input.chars))
   if (input.images?.length) {
     parts.push(`已附 ${input.images.length} 张参考图：参考它们的构图、姿势、服装、场景、光影与画风来写标签；文字描述与参考图冲突时以文字为准。`)
   }
@@ -241,16 +246,6 @@ export function parseGen(reply: string, banIdentity: boolean): GenResult {
     tags: cleanList(r?.tags, banIdentity, removed),
   }))
   const name = String(obj?.name || '').trim().replace(/\s+/g, ' ').slice(0, 20)
-  const num = (v: unknown) => { const n = Number(v); return Number.isFinite(n) ? n : NaN }
-  const boxes = (Array.isArray(obj?.layout) ? obj.layout : []).map((b: any) => {
-    let x = num(b?.x), y = num(b?.y), w = num(b?.w), h = num(b?.h)
-    // tolerate 0–1000 / 0–100 scales
-    const m = Math.max(x, y, w, h)
-    const k = m > 100 ? 1000 : m > 1.5 ? 100 : 1
-    x /= k; y /= k; w /= k; h /= k
-    x = Math.min(1, Math.max(0, x)); y = Math.min(1, Math.max(0, y))
-    w = Math.min(1 - x, Math.max(0, w)); h = Math.min(1 - y, Math.max(0, h))
-    return { x, y, w, h, tags: cleanList(b?.tags, banIdentity, removed) }
-  }).filter((b: { x: number; w: number; h: number }) => Number.isFinite(b.x) && b.w >= 0.03 && b.h >= 0.03).slice(0, 8)
+  const boxes = parseLayout(obj?.layout)
   return { name, sections, negative, removed, regions, boxes }
 }
