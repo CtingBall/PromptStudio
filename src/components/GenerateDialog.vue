@@ -203,10 +203,10 @@ async function run() {
       </div>
 
       <div style="margin-top: 10px">
-        <label class="muted" style="font-size: 12px">画面角色（每行一个：名字=触发词 | 引导词。触发词和引导词会原样放进角色框开头，AI 只写动作；服装可写进引导词，也可不写）</label>
-        <textarea v-model="doc.settings.genChars" rows="2" placeholder="花火=hanabi | 1girl, solo&#10;狐耳少女=sqxMOSS | 1girl, white blouse, pleated skirt" />
+        <label class="muted" style="font-size: 12px">画面角色（每行一个：名字=触发词 | 引导词 | 默认服装。都会原样放进角色框，AI 只写动作；主题要换装时 AI 会替换服装，也可在画框里手动改）</label>
+        <textarea v-model="doc.settings.genChars" rows="2" placeholder="花火=hanabi | 1girl | black frilled dress&#10;狐耳少女=sqxMOSS | 1girl | white blouse, pleated skirt" />
         <div v-if="chars.length" class="muted" style="font-size: 12px">
-          <span v-for="c in chars" :key="c.id" style="margin-right: 10px">{{ c.id }}：{{ c.name }}{{ c.trigger ? '（' + c.trigger + '）' : '' }}{{ c.guide ? ' | ' + c.guide : '' }}</span>
+          <span v-for="c in chars" :key="c.id" style="margin-right: 10px">{{ c.id }}：{{ c.name }}{{ c.trigger ? '（' + c.trigger + '）' : '' }}{{ c.guide ? ' | ' + c.guide : '' }}{{ c.outfit ? ' | 👗' + c.outfit : '' }}</span>
         </div>
       </div>
 

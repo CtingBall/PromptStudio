@@ -75,7 +75,7 @@ function toSets(obj: any): PromptSet[] {
       const x = num01(r?.x), y = num01(r?.y)
       return { id: uid('r'), x, y, w: Math.min(1 - x, num01(r?.w)), h: Math.min(1 - y, num01(r?.h)), text: str(r?.text, 1000),
         kind: ['char', 'text'].includes(r?.kind) ? r.kind : undefined,
-        cid: str(r?.cid, 4) || undefined, speaker: str(r?.speaker, 4) || undefined, desc: str(r?.desc, 600) || undefined }
+        cid: str(r?.cid, 4) || undefined, speaker: str(r?.speaker, 4) || undefined, desc: str(r?.desc, 600) || undefined, outfit: str(r?.outfit, 300) || undefined }
     })
     const cw = Number(s?.canvas?.w), ch = Number(s?.canvas?.h)
     return {

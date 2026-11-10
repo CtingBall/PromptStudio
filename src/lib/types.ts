@@ -33,10 +33,11 @@ export interface Region {
   cid?: string    // char box: character id (A/B/…)
   speaker?: string // text box: id of the character who says it
   desc?: string   // text box: bubble/style description (text holds the words)
+  outfit?: string // char box: outfit for this box only (overrides the character's default)
 }
 
 // A character in the picture; trigger = LoRA trigger word (optional).
-export interface Char { id: string; name: string; trigger?: string; guide?: string }  // guide = fixed prompt for the char box
+export interface Char { id: string; name: string; trigger?: string; guide?: string; outfit?: string }  // guide = fixed prompt, outfit = default clothes (replaceable per box)
 
 export interface PromptSet {
   id: string

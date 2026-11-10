@@ -22,6 +22,7 @@ const cids = computed(() => {
   return [...ids].sort()
 })
 const cname = (id: string) => props.chars?.find((c) => c.id === id)?.name
+const cout = (id?: string) => props.chars?.find((c) => c.id === id)?.outfit
 function setKind(r: Region) {
   if (r.kind === 'char' && !r.cid) r.cid = cids.value.find((id) => !props.regions.some((x) => x.cid === id)) || 'A'
   emit('change')
@@ -116,6 +117,7 @@ function onKey(e: KeyboardEvent) {
         <select v-if="r.kind === 'char'" v-model="r.cid" style="width: auto" title="这是哪个角色" @change="emit('change')">
           <option v-for="id in cids" :key="id" :value="id">{{ id }}{{ cname(id) ? ' ' + cname(id) : '' }}</option>
         </select>
+        <input v-if="r.kind === 'char'" v-model="r.outfit" :placeholder="'服装：' + (cout(r.cid) || '未设') + '（填写则替换）'" style="width: 160px" title="只改这个框的服装；留空用角色默认服装" @change="emit('change')" />
         <select v-if="r.kind === 'text'" v-model="r.speaker" style="width: auto" title="谁说的（招牌/标题选「无」）" @change="emit('change')">
           <option :value="undefined">无人说</option>
           <option v-for="id in cids" :key="id" :value="id">{{ id }}{{ cname(id) ? ' ' + cname(id) : '' }} 说</option>
