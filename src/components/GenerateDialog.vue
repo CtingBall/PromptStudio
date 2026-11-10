@@ -203,10 +203,10 @@ async function run() {
       </div>
 
       <div style="margin-top: 10px">
-        <label class="muted" style="font-size: 12px">画面角色 / 角色 LoRA（每行一个：名字=触发词，没有 LoRA 只写名字；会按 A、B、C 区分，对话框会对应到说话人）</label>
-        <textarea v-model="doc.settings.genChars" rows="2" placeholder="花火=hanabi&#10;狐耳少女=sqxMOSS" />
+        <label class="muted" style="font-size: 12px">画面角色（每行一个：名字=触发词 | 引导词。触发词和引导词会原样放进角色框开头，AI 只写动作；服装可写进引导词，也可不写）</label>
+        <textarea v-model="doc.settings.genChars" rows="2" placeholder="花火=hanabi | 1girl, solo&#10;狐耳少女=sqxMOSS | 1girl, white blouse, pleated skirt" />
         <div v-if="chars.length" class="muted" style="font-size: 12px">
-          <span v-for="c in chars" :key="c.id" style="margin-right: 10px">{{ c.id }}：{{ c.name }}{{ c.trigger ? '（' + c.trigger + '）' : '' }}</span>
+          <span v-for="c in chars" :key="c.id" style="margin-right: 10px">{{ c.id }}：{{ c.name }}{{ c.trigger ? '（' + c.trigger + '）' : '' }}{{ c.guide ? ' | ' + c.guide : '' }}</span>
         </div>
       </div>
 

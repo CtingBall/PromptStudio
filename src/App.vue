@@ -22,7 +22,7 @@ import type { PromptSet, Tag, Region, Char } from './lib/types'
 import { CATEGORIES, RATING_LABEL } from './lib/types'
 import LayoutPanel from './components/LayoutPanel.vue'
 import { checkLayout } from './lib/layout'
-import { elementsJson, injectWorkflow, loadTemplate, saveTemplate, download } from './lib/comfy'
+import { elementsJson, mossJson, injectWorkflow, loadTemplate, saveTemplate, download } from './lib/comfy'
 import type { GenMode } from './lib/translate'
 import type { GenSection } from './lib/translate'
 
@@ -404,6 +404,17 @@ async function copyBboxes() {
 
 // ---- ComfyUI (official CreateBoundingBoxes + MOSSImageLayoutPrompt) ----
 const comfyTpl = ref(loadTemplate())
+async function copyMoss() {
+  const s = current.value
+  if (!s) return
+  try {
+    await navigator.clipboard.writeText(mossJson(s, promptText(s, false), doc.settings.firstLine || ''))
+    const w = checkLayout(s.regions || [])
+    flash('已复制 MOSS 布局 JSON：直接粘进正向提示词（文本编码器）' + (w.length ? '。⚠ ' + w.join('；') : ''), w.length ? 7000 : 3500)
+  } catch (e: any) {
+    flash('复制失败：' + (e?.message || e))
+  }
+}
 async function copyComfy() {
   if (!current.value) return
   try {
@@ -631,6 +642,7 @@ function clampMaxImages() {
             <span class="badge">{{ current.regions.length }} 个框</span>
             <span class="spacer" />
             <button @click="copyBboxes">复制框坐标 JSON</button>
+            <button title="完整布局 JSON（含总描述和首行触发），直接当正向提示词用，不需要画框节点" @click="copyMoss">复制 MOSS JSON</button>
             <button title="粘贴到 ComfyUI 一个文本节点，接到 Create Bounding Boxes 的 bboxes 输入" @click="copyComfy">复制给 ComfyUI</button>
             <button class="primary" :title="comfyTpl ? '模板：' + comfyTpl.name : '首次需选择你的 MOSS 画框工作流 .json'" @click="exportComfy()">导出 ComfyUI 工作流</button>
             <button v-if="comfyTpl" class="ghost" title="更换模板工作流" @click="exportComfy(true)">换模板</button>
@@ -720,6 +732,10 @@ function clampMaxImages() {
               <option :value="1000">0–1000 整数</option>
               <option :value="1">0–1 小数</option>
             </select>
+          </label>
+          <label>
+            MOSS 首行触发（复制 MOSS JSON 时放在第一行，如 &lt;|artist|&gt;fkey&lt;|/artist|&gt;）
+            <input v-model="doc.settings.firstLine" placeholder="留空则不加" />
           </label>
           <h5>外观</h5>
           <div class="row wrap">

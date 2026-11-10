@@ -3,7 +3,7 @@
 //   [{type:'obj'|'text', bbox:[ymin,xmin,ymax,xmax] (0–1000), desc, text?}]
 // Normalized coords are resolution-independent, so the workflow's own width/height still apply.
 import type { Char, PromptSet, Region } from './types'
-import { textBoxDesc } from './layout'
+import { textBoxDesc, charBoxDesc } from './layout'
 
 export interface ComfyElement { type: 'obj' | 'text'; bbox: number[]; desc: string; text?: string }
 
@@ -11,20 +11,37 @@ const g = (v: number) => Math.max(0, Math.min(1000, Math.round(v * 1000)))
 
 // caption sent for a box
 export function boxDesc(r: Region, all: Region[], chars?: Char[]): string {
-  return r.kind === 'text' ? textBoxDesc(r, all, chars) : r.text
+  return r.kind === 'text' ? textBoxDesc(r, all, chars) : r.kind === 'char' ? charBoxDesc(r, chars) : r.text
 }
 
 export function regionsToElements(regions: Region[], chars?: Char[]): ComfyElement[] {
   return regions.map((r) => {
     const bbox = [g(r.y), g(r.x), g(r.y + r.h), g(r.x + r.w)]
     if (r.kind === 'text') return { type: 'text', bbox, text: r.text, desc: boxDesc(r, regions, chars) }
-    return { type: 'obj', bbox, desc: r.text }
+    return { type: 'obj', bbox, desc: boxDesc(r, regions, chars) }
   })
 }
 
 // "1, 3" — 1-based numbers of character boxes, as MOSSImageLayoutPrompt.character_boxes expects
 export function characterBoxes(regions: Region[]): string {
   return regions.map((r, i) => (r.kind === 'char' ? i + 1 : 0)).filter(Boolean).join(', ')
+}
+
+// Full MOSS layout prompt, same JSON as MOSSImageLayoutPrompt outputs (pixels from canvas centre, yxyx);
+// paste straight into the text encoder. firstLine (e.g. an artist LoRA trigger) goes on line 1.
+export function mossJson(s: PromptSet, caption: string, firstLine = ''): string {
+  const W = s.canvas?.w || 1024, H = s.canvas?.h || 1024
+  const regs = s.regions || []
+  const items = regs.map((r) => {
+    const label = r.kind === 'text' ? 'text' : r.kind === 'char' ? 'character' : 'object'
+    const it: Record<string, unknown> = { label, caption: boxDesc(r, regs, s.chars) }
+    if (label === 'text') it.text = r.text
+    it.bbox = [Math.floor(r.y * H) - (H >> 1), Math.floor(r.x * W) - (W >> 1),
+      Math.ceil((r.y + r.h) * H) - (H >> 1), Math.ceil((r.x + r.w) * W) - (W >> 1)]
+    return it
+  })
+  const body = JSON.stringify({ summary: { caption: caption.trim() }, items, bbox_coord_space: 'abs_centralized', bbox_format: 'yxyx' }, null, 2)
+  return firstLine.trim() ? firstLine.trim() + '\n' + body : body
 }
 
 export function elementsJson(s: PromptSet): string {

@@ -108,11 +108,10 @@ function onKey(e: KeyboardEvent) {
         @click="selected = r.id">
         <span class="badge" :style="{ color: `hsl(${(i * 67) % 360} 85% 60%)` }">#{{ i + 1 }}</span>
         <span class="muted" style="font-size: 12px; width: 120px">{{ describeBox(r) }}</span>
-        <select v-model="r.kind" style="width: auto" title="物体 / 角色 / 文字 / 分镜格" @change="setKind(r)">
+        <select v-model="r.kind" style="width: auto" title="物体（也用于分镜格）/ 角色 / 文字" @change="setKind(r)">
           <option :value="undefined">物体</option>
           <option value="char">角色</option>
           <option value="text">文字</option>
-          <option value="panel">分镜格</option>
         </select>
         <select v-if="r.kind === 'char'" v-model="r.cid" style="width: auto" title="这是哪个角色" @change="emit('change')">
           <option v-for="id in cids" :key="id" :value="id">{{ id }}{{ cname(id) ? ' ' + cname(id) : '' }}</option>

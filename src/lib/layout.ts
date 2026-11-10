@@ -5,16 +5,21 @@ import type { Char, Region } from './types'
 
 export const uidR = () => 'r' + Math.random().toString(36).slice(2, 9)
 
-// "名字=触发词" per line (also accepts ":" / "：" / tab); trigger optional.
+// One character per line: "名字=触发词 | 引导词" (also accepts ":" / "：" / tab); trigger and guide optional.
 export function parseChars(raw: string): Char[] {
   const out: Char[] = []
   for (const line of (raw || '').split(/\r?\n/)) {
     const t = line.trim()
     if (!t) continue
-    const m = t.split(/\s*[=:：\t]\s*/)
+    const [head, ...rest] = t.split(/\s*[|｜]\s*/)
+    const m = head.split(/\s*[=:：\t]\s*/)
     const name = (m[0] || '').trim()
     if (!name) continue
-    out.push({ id: String.fromCharCode(65 + out.length), name, trigger: (m[1] || '').trim() || undefined })
+    out.push({
+      id: String.fromCharCode(65 + out.length), name,
+      trigger: (m[1] || '').trim() || undefined,
+      guide: rest.join(', ').trim() || undefined,
+    })
     if (out.length >= 8) break
   }
   return out
@@ -22,34 +27,22 @@ export function parseChars(raw: string): Char[] {
 
 export function charsText(chars: Char[]): string {
   if (!chars.length) return ''
-  return `画面角色（用 id 区分；有触发词的是角色 LoRA）：\n` + chars.map((c) =>
-    `- ${c.id}：${c.name}${c.trigger ? `，LoRA 触发词「${c.trigger}」` : '，无 LoRA'}`).join('\n') +
-    `\n触发词原样放进 Common 分段；有 LoRA 的角色不写先天外貌（发色、瞳色、耳朵、尾巴、体型），只写服装、姿势、动作、表情。`
+  return `画面角色（用 cid 区分）：\n` + chars.map((c) =>
+    `- ${c.id}：${c.name}${c.trigger ? `（触发词 ${c.trigger}）` : ''}${c.guide ? `，固定特征：${c.guide}` : ''}`).join('\n') +
+    `\n角色框的触发词和固定特征由程序自动加在开头，你在 desc 里不要写触发词、名字和固定特征，也不要补发色、瞳色等外貌；只写这个框里角色在做什么。触发词不要写进 sections。`
 }
 
-export const LAYOUT_SPEC = `【画框布局规范】（ComfyUI MOSS-Image 官方画框节点，每个框单独编码，框的描述就是该区域的提示词）
-1. 框的类型 kind：
-   - "panel" 分镜格：漫画/多格/分镜/四格时使用。每一格一个框，所有格子必须拼满整个画布（格间留 1/32 以内的缝），不能有大片空白。
-   - "char" 角色：角色每出现一次就一个框（同一角色在不同格里出现就画多个框，cid 相同）。框住这一格里看得到的身体部分。
-   - "obj" 物件：只给重要的道具、动物、载具、建筑主体。
-   - "text" 文字：每一句对话 / 招牌 / 标题一个框。
-2. 背景不画框：天空、地面、房间、远景、光照、氛围写进 sections（Background & Lighting 等）。分镜格的背景写在 panel 的 desc 里。
-3. panel 的 desc（英文 15–40 词）：开头 "Comic panel 2 of 4, "，再写镜头（extreme close-up / close-up / medium shot / full body / wide shot）、角度、这一格里谁在做什么、这一格的背景。每格镜头要有变化，特写格要明确写 close-up 和特写的部位。
-4. char 的 desc（英文 25–60 词）：开头 "Character A, "；有 LoRA 触发词时紧接着写触发词；在分镜里再写 "in panel 2, "。然后写服装、姿势、动作、表情、朝向/视线（朝向谁）、手里的东西。
-   - 角色框要和镜头匹配：特写格里角色框占满大半格，全身格里框住全身。
-   - 多个角色靠服装、动作、位置明显区分，绝不混写到一个框。同一角色在各格服装保持一致。
-   - 有 LoRA 的角色不写发色、瞳色、耳朵、尾巴、体型等先天外貌，只写服装、姿势、动作、表情。没有 LoRA 的角色可以写外貌。
-5. text 文字框：
-   - text = 实际画出来的文字（保持原语言，对话 ≤12 字或 ≤6 个英文单词）。
-   - speaker = 说话角色的 cid；招牌/标题留空。
-   - 说话人必须在同一格里有自己的 char 框，气泡放在那个 char 框头部上方或侧上方，紧挨着，不盖住任何人的脸，不放到另一个角色头顶，不能跨格。
-   - desc（英文）= 气泡/字体样式 + "the tail points to Character A's mouth"。
-6. obj 的 desc（英文 10–30 词）：外观、材质、颜色、状态、和谁有关。
-7. 顺序：panel 在最前，然后 char 和 obj，text 放最后（越靠后越在前景）。
-8. 坐标：画布比例 0–1，(0,0) 左上角，x/y 是左上角，w/h 是宽高。主体要占满画面，不留无意义的空白。
-9. sections：Common 写人数标签（如 2girls）和 comic、multiple panels 等格式标签；有 LoRA 的角色把触发词放进 Common；不要在 sections 里写对话内容。`
+export const LAYOUT_SPEC = `【画框布局规范】（MOSS-Image 布局：每个框的 desc 就是这个区域的提示词，用自然的英文短句）
+1. 每个框只描述框里有什么。漫画/多格时，一格就是一个 obj 框，desc 写成 "Top-left panel: …" 再描述这一格里的画面；分镜、特写靠框的大小和描述自然体现。
+2. kind：
+   - "char" 角色框：cid 写角色 id。desc 只写动作、姿势、表情、朝向/视线（看向谁）、手里的东西；服装可写可不写（主题要求换装时再写）。15–40 个英文词。提到别的角色时用位置称呼（如 "the girl on the right"），不要写 Character B。
+   - "obj" 物件或分镜格：描述里面的内容。
+   - "text" 文字框：text 是画出来的原文（对话 ≤12 字），speaker 写说话角色的 cid（旁白、招牌留空），desc 写气泡或字体样式和位置，如 "white speech bubble near the girl's head"。
+3. 画面的总体风格、场景、光照写进 sections，不要单独画背景框。
+4. 坐标：画布比例 0–1，(0,0) 左上角，x/y 是框左上角，w/h 是宽高。主体要撑满画面。
+5. 顺序：先 obj 和 char，text 放最后。`
 
-export const LAYOUT_SCHEMA = `"layout": [{"n": 1, "kind": "panel|char|obj|text", "cid": "A", "speaker": "A", "x": 0, "y": 0, "w": 0, "h": 0, "desc": "...", "text": "只有文字框才有"}]`
+export const LAYOUT_SCHEMA = `"layout": [{"n": 1, "kind": "char|obj|text", "cid": "A", "speaker": "A", "x": 0, "y": 0, "w": 0, "h": 0, "desc": "...", "text": "只有文字框才有"}]`
 
 // Existing boxes, for edit/review/layout-mode prompts.
 export function layoutText(regions: Region[], canvas: { w: number; h: number }): string {
@@ -64,7 +57,7 @@ export function layoutText(regions: Region[], canvas: { w: number; h: number }):
 }
 
 export interface LayoutBox {
-  n?: number; kind: 'obj' | 'char' | 'text' | 'panel'; cid?: string; speaker?: string
+  n?: number; kind: 'obj' | 'char' | 'text'; cid?: string; speaker?: string
   x: number; y: number; w: number; h: number; desc: string; text?: string
 }
 
@@ -79,7 +72,7 @@ export function parseLayout(list: unknown): LayoutBox[] {
     x /= k; y /= k; w /= k; h /= k
     x = Math.min(1, Math.max(0, x)); y = Math.min(1, Math.max(0, y))
     w = Math.min(1 - x, Math.max(0, w)); h = Math.min(1 - y, Math.max(0, h))
-    const kind = ['char', 'text', 'panel'].includes(b?.kind) ? b.kind : 'obj'
+    const kind = ['char', 'text'].includes(b?.kind) ? b.kind : 'obj'
     // legacy {tags:[]} replies
     const desc = str(b?.desc) || (Array.isArray(b?.tags) ? b.tags.map(String).join(', ') : '')
     const n = num(b?.n)
@@ -95,42 +88,19 @@ export function parseLayout(list: unknown): LayoutBox[] {
 }
 
 const ctr = (r: Region) => [r.x + r.w / 2, r.y + r.h / 2]
-const inside = (p: number[], r: Region) => p[0] >= r.x && p[0] <= r.x + r.w && p[1] >= r.y && p[1] <= r.y + r.h
-export function panelOf(r: Region, all: Region[]): Region | undefined {
-  const c = ctr(r)
-  return all.filter((x) => x.kind === 'panel' && inside(c, x)).sort((a, b) => a.w * a.h - b.w * b.h)[0]
-}
-// the speaker's char box closest to a text box (same panel first)
+// the speaker's char box closest to a text box
 export function speakerBox(t: Region, all: Region[]): Region | undefined {
-  const pn = panelOf(t, all)
   const c = ctr(t)
   const d = (r: Region) => { const q = ctr(r); return Math.hypot(q[0] - c[0], q[1] - c[1]) }
-  const cands = all.filter((x) => x.kind === 'char' && x.cid === t.speaker)
-  const same = pn ? cands.filter((x) => panelOf(x, all) === pn) : cands
-  return (same.length ? same : cands).sort((a, b) => d(a) - d(b))[0]
-}
-function side(r: Region, frame?: Region): string {
-  const f = frame || { x: 0, w: 1 }
-  const cx = (r.x + r.w / 2 - f.x) / f.w
-  return cx < 0.4 ? 'on the left' : cx > 0.6 ? 'on the right' : 'in the center'
+  return all.filter((x) => x.kind === 'char' && x.cid === t.speaker).sort((a, b) => d(a) - d(b))[0]
 }
 
-// Problems a user should fix before exporting (speaker missing, blank canvas…)
+// Problems worth a warning before export
 export function checkLayout(all: Region[]): string[] {
   const out: string[] = []
   all.forEach((t, i) => {
-    if (t.kind !== 'text' || !t.speaker) return
-    const sp = speakerBox(t, all)
-    if (!sp) out.push(`#${i + 1}「${t.text}」的说话人 ${t.speaker} 没有角色框`)
-    else if (panelOf(t, all) && panelOf(sp, all) !== panelOf(t, all)) out.push(`#${i + 1}「${t.text}」和说话人 ${t.speaker} 不在同一格`)
+    if (t.kind === 'text' && t.speaker && !speakerBox(t, all)) out.push(`#${i + 1}「${t.text}」的说话人 ${t.speaker} 没有角色框`)
   })
-  // coverage on a 20×20 grid (text boxes don't count)
-  let hit = 0
-  for (let a = 0; a < 20; a++) for (let b = 0; b < 20; b++) {
-    const p = [(a + 0.5) / 20, (b + 0.5) / 20]
-    if (all.some((r) => r.kind !== 'text' && inside(p, r))) hit++
-  }
-  if (all.length && hit < 400 * 0.6) out.push(`画面只有 ${Math.round(hit / 4)}% 被角色/物件/分镜框覆盖，空白较多`)
   return out
 }
 
@@ -151,20 +121,24 @@ export function boxesToRegions(boxes: LayoutBox[], grid = 0, old?: Region[]): Re
     return r
   })
   // order: chars/objs first, text boxes last (foreground)
-  const rank = (r: Region) => (r.kind === 'panel' ? 0 : r.kind === 'text' ? 2 : 1)
+  const rank = (r: Region) => (r.kind === 'text' ? 1 : 0)
   return regs.map((r, i) => [r, i] as const).sort((a, b) => rank(a[0]) - rank(b[0]) || a[1] - b[1]).map(([r]) => r)
 }
 
-// Final caption for a text box: style + who says it + where that speaker is (computed from boxes).
+// Final caption for a char box: trigger + fixed guide + action (legacy "Character A, trigger," prefix stripped).
+export function charBoxDesc(r: Region, chars?: Char[]): string {
+  const c = chars?.find((x) => x.id === r.cid)
+  let act = (r.text || '').trim().replace(/^Character [A-Z]\b[,:]?\s*/i, '')
+  if (c?.trigger && act.toLowerCase().startsWith(c.trigger.toLowerCase())) act = act.slice(c.trigger.length).replace(/^[,\s]+/, '')
+  return [c?.trigger, c?.guide, act].filter(Boolean).join(', ')
+}
+
+// Final caption for a text box: style + who says it.
 export function textBoxDesc(r: Region, all: Region[], chars?: Char[]): string {
   const base = (r.desc || '').trim() || 'speech bubble'
-  if (!r.speaker) return base
+  if (!r.speaker || /spoken by/i.test(base)) return base
+  const c = chars?.find((x) => x.id === r.speaker)
   const sp = speakerBox(r, all)
-  const pn = sp ? panelOf(sp, all) : undefined
-  const name = chars?.find((c) => c.id === r.speaker)?.name
-  const who = `Character ${r.speaker}${name ? ` (${name})` : ''}`
-  const pIdx = pn ? all.filter((x) => x.kind === 'panel').indexOf(pn) + 1 : 0
-  const where = sp ? ` ${side(sp, pn)}${pIdx ? ` of panel ${pIdx}` : ''}` : ''
-  if (base.includes(`Character ${r.speaker}`)) return sp ? `${base}, ${who} is${where}` : base
-  return `${base}, spoken by ${who}${sp ? ` who is${where}` : ''}`
+  const who = sp ? `the character in box ${all.indexOf(sp) + 1}` : `Character ${r.speaker}`
+  return `${base}, spoken by ${who}${c?.trigger ? ` (${c.trigger})` : ''}`
 }

@@ -74,7 +74,7 @@ function toSets(obj: any): PromptSet[] {
     const regions: Region[] = (Array.isArray(s?.regions) ? s.regions : []).slice(0, 50).map((r: any) => {
       const x = num01(r?.x), y = num01(r?.y)
       return { id: uid('r'), x, y, w: Math.min(1 - x, num01(r?.w)), h: Math.min(1 - y, num01(r?.h)), text: str(r?.text, 1000),
-        kind: ['char', 'text', 'panel'].includes(r?.kind) ? r.kind : undefined,
+        kind: ['char', 'text'].includes(r?.kind) ? r.kind : undefined,
         cid: str(r?.cid, 4) || undefined, speaker: str(r?.speaker, 4) || undefined, desc: str(r?.desc, 600) || undefined }
     })
     const cw = Number(s?.canvas?.w), ch = Number(s?.canvas?.h)

@@ -29,14 +29,14 @@ export interface Region {
   w: number
   h: number
   text: string   // what is inside the box (user description or generated tags)
-  kind?: 'obj' | 'char' | 'text' | 'panel'   // MOSS layout: object (default) / character / text / comic panel (exported as object)
+  kind?: 'obj' | 'char' | 'text'   // MOSS layout: object (default; also comic panels) / character / text
   cid?: string    // char box: character id (A/B/…)
   speaker?: string // text box: id of the character who says it
   desc?: string   // text box: bubble/style description (text holds the words)
 }
 
 // A character in the picture; trigger = LoRA trigger word (optional).
-export interface Char { id: string; name: string; trigger?: string }
+export interface Char { id: string; name: string; trigger?: string; guide?: string }  // guide = fixed prompt for the char box
 
 export interface PromptSet {
   id: string
@@ -75,7 +75,8 @@ export interface Settings {
   banIdentity: boolean   // strip hair color / eye color / ears (for character LoRAs)
   maxImages: number      // reference images per request (xAI vision accepts several)
   bboxScale: 1 | 1000    // bbox output coordinate scale: 0–1 floats or 0–1000 ints
-  genChars: string       // character LoRAs, one per line: 名字=触发词
+  genChars: string       // characters, one per line: 名字=触发词 | 引导词
+  firstLine: string      // put on line 1 of the MOSS prompt, e.g. <|artist|>fkey<|/artist|>
 }
 
 export const DEFAULT_GEN_PREFIX =
@@ -97,6 +98,7 @@ export const DEFAULT_SETTINGS: Settings = {
   maxImages: 4,
   bboxScale: 1000,
   genChars: '',
+  firstLine: '',
 }
 
 // Section order used for generation (matches the user's template).
