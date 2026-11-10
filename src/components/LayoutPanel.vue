@@ -95,7 +95,12 @@ function onKey(e: KeyboardEvent) {
         @click="selected = r.id">
         <span class="badge" :style="{ color: `hsl(${(i * 67) % 360} 85% 60%)` }">#{{ i + 1 }}</span>
         <span class="muted" style="font-size: 12px; width: 120px">{{ describeBox(r) }}</span>
-        <input v-model="r.text" placeholder="框里有什么，例如：持剑少女 / 满月 / 倒塌的钟楼" style="flex: 1" @change="emit('change')" />
+        <select v-model="r.kind" style="width: auto" title="ComfyUI MOSS 标签：物体 / 角色 / 文字" @change="emit('change')">
+          <option :value="undefined">物体</option>
+          <option value="char">角色</option>
+          <option value="text">文字</option>
+        </select>
+        <input v-model="r.text" :placeholder="r.kind === 'text' ? '要画出来的文字，例如：MOSS' : '框里有什么，例如：持剑少女 / 满月 / 倒塌的钟楼'" style="flex: 1" @change="emit('change')" />
         <button class="ghost danger" style="padding: 0 6px" @click.stop="remove(r.id)">×</button>
       </div>
     </div>

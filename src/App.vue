@@ -21,6 +21,7 @@ import { lookup } from './lib/store'
 import type { PromptSet, Tag, Region } from './lib/types'
 import { CATEGORIES, RATING_LABEL } from './lib/types'
 import LayoutPanel from './components/LayoutPanel.vue'
+import { elementsJson, injectWorkflow, loadTemplate, saveTemplate, download } from './lib/comfy'
 import type { GenMode } from './lib/translate'
 import type { GenSection } from './lib/translate'
 
@@ -399,6 +400,54 @@ async function copyBboxes() {
   }
 }
 
+// ---- ComfyUI (official CreateBoundingBoxes + MOSSImageLayoutPrompt) ----
+const comfyTpl = ref(loadTemplate())
+async function copyComfy() {
+  if (!current.value) return
+  try {
+    await navigator.clipboard.writeText(elementsJson(current.value))
+    flash('已复制：粘进文本节点 → 接到 Create Bounding Boxes 的 bboxes', 3500)
+  } catch (e: any) {
+    flash('复制失败：' + (e?.message || e))
+  }
+}
+function pickTemplate(): Promise<boolean> {
+  return new Promise((res) => {
+    const inp = document.createElement('input')
+    inp.type = 'file'
+    inp.accept = '.json,application/json'
+    inp.onchange = async () => {
+      const f = inp.files?.[0]
+      if (!f) return res(false)
+      try {
+        const txt = await f.text()
+        if (!txt.includes('CreateBoundingBoxes')) throw new Error('这个工作流里没有 Create Bounding Boxes 节点')
+        saveTemplate(f.name, txt)
+        comfyTpl.value = loadTemplate()
+        res(true)
+      } catch (e: any) {
+        flash('模板无效：' + (e?.message || e), 4000)
+        res(false)
+      }
+    }
+    inp.click()
+  })
+}
+async function exportComfy(change = false) {
+  const s = current.value
+  if (!s) return
+  if ((change || !comfyTpl.value) && !(await pickTemplate())) return
+  if (change) { flash('模板已更换：' + comfyTpl.value!.name); return }
+  try {
+    const r = injectWorkflow(comfyTpl.value!.json, s, promptText(s, false))
+    const base = comfyTpl.value!.name.replace(/\.json$/i, '')
+    download(`${base}_${(s.name || 'layout').replace(/[\\/:*?"<>|\s]+/g, '_').slice(0, 30)}.json`, r.json)
+    flash('已导出，拖进 ComfyUI 即可。' + r.log.join('；'), 6000)
+  } catch (e: any) {
+    flash('导出失败：' + (e?.message || e), 4000)
+  }
+}
+
 // ---- generate dialog launcher (rewrite mode prefilled with current prompt) ----
 const genMode = ref<GenMode>('theme')
 const genRaw = ref('')
@@ -578,6 +627,9 @@ function clampMaxImages() {
             <span class="badge">{{ current.regions.length }} 个框</span>
             <span class="spacer" />
             <button @click="copyBboxes">复制框坐标 JSON</button>
+            <button title="粘贴到 ComfyUI 一个文本节点，接到 Create Bounding Boxes 的 bboxes 输入" @click="copyComfy">复制给 ComfyUI</button>
+            <button class="primary" :title="comfyTpl ? '模板：' + comfyTpl.name : '首次需选择你的 MOSS 画框工作流 .json'" @click="exportComfy()">导出 ComfyUI 工作流</button>
+            <button v-if="comfyTpl" class="ghost" title="更换模板工作流" @click="exportComfy(true)">换模板</button>
             <button class="ghost" @click="showLayout = false">收起</button>
           </div>
           <LayoutPanel :regions="current.regions" :canvas="current.canvas" @change="touch(current!)" />
