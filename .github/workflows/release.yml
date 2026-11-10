@@ -19,6 +19,12 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm run release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - run: pnpm run dist
+      # one step creates the release and uploads everything (electron-builder's own
+      # publish raced and created duplicate releases)
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            release/*.exe
+            release/*.blockmap
+            release/latest.yml
