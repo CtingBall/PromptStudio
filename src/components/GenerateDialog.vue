@@ -213,12 +213,12 @@ async function run() {
         </div>
       </div>
 
-      <div class="row" style="margin-top: 10px">
+      <div class="row wrap" style="margin-top: 10px">
         <label class="muted">提示词写法</label>
         <div class="btn-group">
           <button v-for="(l, f) in FORMAT_LABEL" :key="f" :class="{ on: doc.settings.genFormat === f }" @click="doc.settings.genFormat = f">{{ l }}</button>
         </div>
-        <span class="muted" style="font-size: 12px">{{ FORMAT_TIP[doc.settings.genFormat] }}（区别见 📖 手册）</span>
+        <span class="muted fmt-tip">{{ FORMAT_TIP[doc.settings.genFormat] }}（区别见 📖 手册）</span>
       </div>
 
       <div class="row" style="margin-top: 10px">

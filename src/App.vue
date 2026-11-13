@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { useDragSelect } from './lib/dragSelect'
 import { ref, computed, watch, onMounted } from 'vue'
-import { autoBackupOnUpdate, backupAll, APP_VERSION } from './lib/autobackup'
+import { autoBackupOnUpdate, backupAll, APP_VERSION, IS_DESKTOP } from './lib/autobackup'
 import { ui, THEMES, dragSplit, clampW } from './lib/ui'
 import TagChip from './components/TagChip.vue'
 import GenerateDialog from './components/GenerateDialog.vue'
@@ -435,6 +435,39 @@ async function copyBboxes() {
 
 // ---- ComfyUI (official CreateBoundingBoxes + MOSSImageLayoutPrompt) ----
 const comfyTpl = ref(loadTemplate())
+// ---- check for updates ----
+const updBusy = ref(false)
+const RELEASES = 'https://github.com/CtingBall/PromptStudio/releases/latest'
+const newer = (a: string, b: string) => {
+  const x = a.split('.').map(Number), y = b.split('.').map(Number)
+  for (let i = 0; i < 3; i++) if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) > (y[i] || 0)
+  return false
+}
+async function checkUpdate() {
+  updBusy.value = true
+  try {
+    if (IS_DESKTOP) {
+      const r = await (await fetch('/update/check')).json()
+      if (r.state === 'latest') flash(`已是最新版本 V${r.current}`)
+      else if (r.state === 'available') flash(`发现新版本 V${r.version}，正在后台下载，下载完会提示重启`, 6000)
+      else if (r.state === 'downloaded') flash(`V${r.version} 已下载好，重启即可完成更新`)
+      else if (r.state === 'dev') flash('开发模式下不检查更新')
+      else flash('检查更新失败：' + (r.error || '连不上 GitHub，请检查网络'), 6000)
+    } else {
+      const r = await fetch('https://api.github.com/repos/CtingBall/PromptStudio/releases/latest')
+      if (!r.ok) throw new Error('HTTP ' + r.status)
+      const v = String((await r.json()).tag_name || '').replace(/^v/i, '')
+      if (v && newer(v, APP_VERSION)) {
+        if (confirm(`发现新版本 V${v}（当前 V${APP_VERSION}），打开下载页？`)) window.open(RELEASES, '_blank')
+      } else flash(`已是最新版本 V${APP_VERSION}`)
+    }
+  } catch (e: any) {
+    flash('检查更新失败：' + (e?.message || e), 6000)
+  } finally {
+    updBusy.value = false
+  }
+}
+
 async function copyGbc() {
   const s = current.value
   if (!s) return
@@ -815,6 +848,7 @@ function clampMaxImages() {
           <div class="row" style="gap: 8px">
             <button class="ghost" @click="manualBackup">备份全部数据</button>
             <span class="muted" style="font-size: 12px; user-select: none" @click="tapVer">当前版本 V{{ APP_VERSION }}</span>
+            <button class="ghost" :disabled="updBusy" @click="checkUpdate">{{ updBusy ? '检查中…' : '检查更新' }}</button>
           </div>
           <div class="row" style="gap: 8px">
             <button class="ghost" :disabled="testing" @click="testConn">测试连接</button>

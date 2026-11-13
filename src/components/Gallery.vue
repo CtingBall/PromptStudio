@@ -126,7 +126,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', key))
             <button class="ghost sm" @click="view = (view + 1) % shots.length">→</button>
             <button class="ghost sm" @click="view = -1">✕</button>
           </div>
-          <textarea v-model="cur.note" rows="2" placeholder="备注：模型 / LoRA / 种子 / 效果…" @change="touch(set)" />
+          <textarea v-model="cur.note" class="note-box" rows="3" placeholder="备注：模型 / LoRA / 种子 / 效果…" @change="touch(set)" />
           <button class="primary" @click="emit('review', cur.id); view = -1">✨ AI 对比诊断并给修正版</button>
           <button @click="emit('reverse', cur.id); view = -1">✨ 用这张图反推新提示词组</button>
           <button v-if="curMeta" @click="emit('import-meta', { ...curMeta, shotId: cur.id, raw: cur.meta }); view = -1">📥 用图里的参数新建组</button>

@@ -283,3 +283,30 @@ img.brand-logo { display: block; object-fit: cover; padding: 0; background: none
 /* v0.3.1 dates */
 .date-head { font-size: 11px; color: var(--muted); padding: 8px 6px 2px; letter-spacing: .05em; }
 .set-date { font-size: 12px; white-space: nowrap; }
+
+/* v0.3.2 long-text safety */
+.row.wrap { flex-wrap: wrap; }
+.btn-group { flex-wrap: wrap; max-width: 100%; }
+.btn-group > button { white-space: nowrap; }
+.fmt-tip { font-size: 12px; flex-basis: 100%; line-height: 1.5; }
+.modal .row, .lb-side .row, .card-head, .settings-grid > * { flex-wrap: wrap; min-width: 0; }
+.modal, .lb-side, .meta-box, .hist-item, .xfer-item, .share-preview, .toast, .tip-bar, .review { overflow-wrap: anywhere; }
+textarea { min-height: 2.6em; max-height: 60vh; field-sizing: content; }
+.note-box { min-height: 4.5em; max-height: 40vh; resize: vertical; flex-shrink: 0; }
+.lb-side { min-width: 0; }
+.lb-side > button { flex-shrink: 0; white-space: normal; text-align: left; }
+.meta-box { max-height: 40vh; overflow: auto; flex-shrink: 0; }
+.toast { max-width: min(640px, 90vw); white-space: pre-wrap; }
+.pill { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.set-sub { flex-wrap: nowrap; }
+.set-sub > * { flex-shrink: 0; }
+.set-sub > .muted:nth-child(2) { flex-shrink: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.chip-grid > * { max-width: 100%; }
+.chip-grid span, .chip-grid div { overflow-wrap: anywhere; }
+.title-input { min-width: 120px; text-overflow: ellipsis; }
+@media (max-width: 900px) {
+  .lightbox { flex-direction: column; overflow: auto; }
+  .lightbox > img { max-width: 100%; max-height: 55vh; }
+  .lb-side { width: 100%; }
+  .route-row { grid-template-columns: 1fr 1fr; }
+}

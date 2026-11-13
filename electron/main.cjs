@@ -40,6 +40,7 @@ async function forward(req) {
 function serve(req) {
   const url = new URL(req.url)
   if (url.pathname === '/llm/chat') return forward(req)
+  if (url.pathname === '/update/check') return manualCheck()
   let rel = decodeURIComponent(url.pathname)
   if (rel === '/' || !path.extname(rel)) rel = '/index.html'
   const file = path.normalize(path.join(DIST, rel))
@@ -67,12 +68,36 @@ function createWindow() {
   win.loadURL(DEV ? 'http://localhost:5188' : 'app://local/')
 }
 
+let updater = null
+let downloaded = ''
+// Called from the settings page (「检查更新」). Downloads in the background; the
+// update-downloaded dialog then offers a restart.
+async function manualCheck() {
+  const current = app.getVersion()
+  if (!updater) return json(200, { state: 'dev', current })
+  if (downloaded) {
+    setTimeout(() => updater.emit('update-downloaded', { version: downloaded }), 50)
+    return json(200, { state: 'downloaded', current, version: downloaded })
+  }
+  try {
+    const r = await updater.checkForUpdates()
+    const v = r && r.updateInfo && r.updateInfo.version
+    if (r && r.isUpdateAvailable === false) return json(200, { state: 'latest', current })
+    if (v && v !== current) return json(200, { state: 'available', current, version: v })
+    return json(200, { state: 'latest', current })
+  } catch (e) {
+    return json(200, { state: 'error', current, error: String((e && e.message) || e) })
+  }
+}
+
 function setupUpdater() {
   if (DEV || !app.isPackaged) return
   const { autoUpdater } = require('electron-updater')
+  updater = autoUpdater
   autoUpdater.autoDownload = true
   autoUpdater.autoInstallOnAppQuit = true
   autoUpdater.on('update-downloaded', async (info) => {
+    downloaded = info.version
     const r = await dialog.showMessageBox(win, {
       type: 'info', title: '发现新版本', buttons: ['立即重启更新', '稍后（退出时自动更新）'], defaultId: 0, cancelId: 1,
       message: `千夏绘卷 ${info.version} 已下载好`, detail: '重启后完成更新，你的提示词和图片都不会丢失。',
