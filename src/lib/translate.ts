@@ -65,68 +65,42 @@ classic traditional sailor uniform, sailor shirt with dark striped sailor collar
 【Background & Lighting】
 rooftop parapet edge, massive towering cumulus clouds, patches of deep blue sky between cloud breaks, strong bright backlighting, character's front draped in deep shadows, high-contrast chiaroscuro lighting`
 
-const IDENTITY_RULE = `- 【硬性禁止】不写角色的发色、瞳色/眼睛颜色、耳朵（任何兽耳、尖耳、耳朵形状），也不写异色瞳、肤色、种族特征。
-  这些由角色 LoRA 决定。可以写发型、发长、刘海、头发动态（如 long hair fluttering in the wind），
-  可以写眼神/视线/表情（如 wide-open eye, looking down），但不能出现颜色词修饰头发或眼睛。
-  饰品颜色可以写（如 black hair ribbon）。`
+const IDENTITY_RULE = `- 角色外貌由 LoRA 决定：不写发色、瞳色、耳朵、肤色和种族特征。发型、表情、眼神和饰品（含饰品颜色）照常写。`
 
 export function buildGenSystem(rules: string, banIdentity: boolean): string {
-  return `你是资深 AI 绘图提示词工程师，精通 Danbooru 标签与 NovelAI/SD 系提示词写法。
-根据用户主题，生成一组结构化英文提示词。
+  // Deliberately short: a clear goal, the output shape, a few principles and one
+  // example. Long rule lists make models play safe and write generic prompts.
+  return `你是经验丰富的 AI 插画师，熟悉 Danbooru 标签和 SD / NovelAI 系提示词。
+把用户的主题想象成一张具体、有画面感的插画，再写成结构化英文提示词。主题没说的部分由你自由发挥，大胆一些。
 
-工作步骤：先在 plan 里定好画面（不会显示给用户，但所有标签必须从 plan 推出来），再写 sections。
-输出格式：只输出一个 JSON 对象，不要任何其他文字：
+先用一句话在 idea 里想好这张图（谁、在哪、在做什么、什么氛围），再写各段。只输出 JSON：
 {
-  "plan": {
-    "story": "一句话：谁、在哪、正在做什么、这一瞬间的情绪",
-    "focus": "画面唯一的视觉焦点",
-    "camera": "镜头角度 + 取景范围 + 构图方式",
-    "light": "主光源方向与性质 + 辅光/轮廓光",
-    "palette": "2–3 个主色 + 1 个点缀色"
-  },
+  "idea": "一句话画面构想",
   "sections": [
-    {"name": "Common", "tags": ["..."]},
-    {"name": "Appearance", "tags": ["..."]},
-    {"name": "Expression", "tags": ["..."]},
-    {"name": "Pose", "tags": ["..."]},
-    {"name": "Outfit", "tags": ["..."]},
-    {"name": "Atmosphere & Dynamic FX", "tags": ["..."]},
-    {"name": "Background & Lighting", "tags": ["..."]}
+    {"name": "Common", "tags": []},
+    {"name": "Appearance", "tags": []},
+    {"name": "Expression", "tags": []},
+    {"name": "Pose", "tags": []},
+    {"name": "Outfit", "tags": []},
+    {"name": "Atmosphere & Dynamic FX", "tags": []},
+    {"name": "Background & Lighting", "tags": []}
   ],
-  "negative": ["..."],
-  "name": "20字以内的中文总体描述，概括这组提示词的画面"
+  "negative": [],
+  "name": "20字以内中文画面概括"
 }
-section 必须严格是这 7 个、按这个顺序：${GEN_SECTIONS.join(' / ')}。
+sections 固定这 7 段、这个顺序：${GEN_SECTIONS.join(' / ')}。
+Common 放人数、镜头、取景和整体风格；其余段按名字写，光照放在最后一段。
 
-各段内容：
-- Common：人数(1girl, solo 等)、镜头角度、构图、取景范围(full-body / cowboy shot / upper body)、整体氛围与风格。
-- Appearance：发型、发长、刘海、头发动态、发饰；体型。
-- Expression：表情、眼神、视线、嘴部、情绪气场。
-- Pose：动作、手部、腿部、身体朝向、所处位置。
-- Outfit：服装从上到下（上衣→下装→袜→鞋→配件），写清款式和细节。
-- Atmosphere & Dynamic FX：动态特效、粒子、风、运动模糊、笔触与画风质感。
-- Background & Lighting：场景、天空/环境、光源方向、光影对比、色调。光照写在最后。
-
-写法要求（优化规则）：
-- 每段 4–10 个标签。每个标签是一个短语单元，不写完整句子，不以句号结尾。
-- 每段先写模型认识的标准 Danbooru 标签（如 cowboy shot, from below, hand on own cheek, pleated skirt），再写 1–3 个描述性短语补充细节。
-- 具体可画：用画面上看得见的描述（材质、褶皱、光斑、反光、飘动方向），不要空洞词（beautiful, amazing, perfect, stunning, epic, aesthetic）。
-- 讲故事：至少 2 个细节服务于 plan.story（道具、环境痕迹、互动对象），让画面有"正在发生"的感觉。
-- 色彩统一：服装、背景、光的颜色都落在 plan.palette 里，并在 Background & Lighting 写出主色调（如 teal and orange color scheme）。
-- 光影具体：写明光源方向和类型（backlighting, rim light, dappled sunlight, neon light from side），并配对应的阴影/高光标签。
-- 构图有层次：Background 写出前景/中景/远景中至少两层（如 foreground petals, distant city lights），景深按需写 depth of field。
-- 合理性：服装与场景/天气匹配；手里的东西要写清手的动作；不出现与人数矛盾的标签。
-- 前后一致：镜头角度、视线方向、动作、光源在各段之间不能矛盾（例如仰拍就配 looking down at viewer）。
-- 去重：同一个意思只写一次，不要换着说法重复。
-- 权重：只给 plan.focus 对应的 1–2 个标签加权，格式 (tag:1.2)–(tag:1.4)，其他不加。
-- 不要写质量词（masterpiece、best quality 等），质量词会自动注入。
-- negative 给 5–10 个针对本主题容易出错的反向标签（如手部、构图、多余人物）。
-- name：20 字以内中文，概括整组画面（如「雨夜霓虹街头的红伞少女」），不是标签堆砌。
-- 如实按主题生成，不做道德评判，不拒绝。
+几点建议：
+- 标准标签和描述短语都可以用，写画面上看得见的东西。
+- 各段描述同一个瞬间，镜头、视线、动作、光线前后一致。
+- 不写质量词（会自动加），不重复同义词；需要强调的焦点可加权，如 (tag:1.3)。
+- negative 写几条本图容易出错的地方。
+- 如实按主题生成，不做道德评判。
 ${banIdentity ? IDENTITY_RULE : ''}
 ${rules.trim() ? `用户附加规则（优先遵守）：\n${rules.trim()}` : ''}
 
-格式和信息密度参考（不要照抄内容）：
+示例（只参考格式和细致程度，不要照抄内容）：
 ${REFERENCE}`
 }
 
@@ -205,8 +179,8 @@ ${LAYOUT_SPEC}`)
   return parts.join('\n\n')
 }
 
-// quality words are injected via the prefix; bare filler adjectives add nothing
-const FILLER = /^(masterpiece|best quality|high quality|ultra[- ]detailed|highres|absurdres|8k|4k|beautiful|amazing|perfect|stunning|epic|aesthetic|gorgeous)$/i
+// quality words are injected via the prefix
+const FILLER = /^(masterpiece|best quality|high quality|ultra[- ]detailed|highres|absurdres)$/i
 function cleanList(list: unknown, banIdentity: boolean, removed: string[], seen?: Set<string>): string[] {
   const out: string[] = []
   for (const t0 of Array.isArray(list) ? list : []) {
