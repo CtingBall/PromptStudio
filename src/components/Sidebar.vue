@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useDragSelect, listSetter } from '../lib/dragSelect'
 import { ref, computed } from 'vue'
 import { doc, addSet, newSet, touch, removeSets, folders, allLabels, promptText } from '../lib/store'
 import { CATEGORIES, RATING_LABEL, type Category, type PromptSet } from '../lib/types'
@@ -55,6 +56,8 @@ function create() {
 const bulk = ref(false)
 const sel = ref<string[]>([])
 const selSets = () => doc.sets.filter((s) => sel.value.includes(s.id))
+const ds = useDragSelect()
+const setSel = listSetter(sel)
 function toggle(id: string) { sel.value = sel.value.includes(id) ? sel.value.filter((x) => x !== id) : [...sel.value, id] }
 function selectAll() { sel.value = sel.value.length === visible.value.length ? [] : visible.value.map((s) => s.id) }
 function bulkRating(c: string) {
@@ -205,9 +208,10 @@ function drop(t: PromptSet) {
     <div class="side-list">
       <div v-for="s in visible" :key="s.id"
         :class="['set-item', { on: s.id === selected, picked: sel.includes(s.id) }]"
-        :draggable="canDrag" @click="onClick(s)" @dragstart="dragId = s.id; $event.dataTransfer?.setData('text/plain', s.id)" @dragend="dragId = ''"
+        :draggable="canDrag && !bulk" @click="!bulk && onClick(s)"
+        @mousedown="bulk && ds.start($event, s.id, sel.includes(s.id), setSel)" @mouseenter="bulk && ds.over(s.id)" @dragstart="dragId = s.id; $event.dataTransfer?.setData('text/plain', s.id)" @dragend="dragId = ''"
         @dragover.prevent @drop.prevent="drop(s)">
-        <input v-if="bulk" type="checkbox" :checked="sel.includes(s.id)" style="width: auto" @click.stop="toggle(s.id)" />
+        <input v-if="bulk" type="checkbox" :checked="sel.includes(s.id)" style="width: auto; pointer-events: none" tabindex="-1" />
         <div class="thumb">
           <img v-if="s.shots?.length && imgSrc(s.shots[0].id)" :src="imgSrc(s.shots[0].id)" />
           <span v-else>{{ s.name.slice(0, 1) }}</span>

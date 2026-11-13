@@ -74,8 +74,16 @@ export function buildGenSystem(rules: string, banIdentity: boolean): string {
   return `你是资深 AI 绘图提示词工程师，精通 Danbooru 标签与 NovelAI/SD 系提示词写法。
 根据用户主题，生成一组结构化英文提示词。
 
+工作步骤：先在 plan 里定好画面（不会显示给用户，但所有标签必须从 plan 推出来），再写 sections。
 输出格式：只输出一个 JSON 对象，不要任何其他文字：
 {
+  "plan": {
+    "story": "一句话：谁、在哪、正在做什么、这一瞬间的情绪",
+    "focus": "画面唯一的视觉焦点",
+    "camera": "镜头角度 + 取景范围 + 构图方式",
+    "light": "主光源方向与性质 + 辅光/轮廓光",
+    "palette": "2–3 个主色 + 1 个点缀色"
+  },
   "sections": [
     {"name": "Common", "tags": ["..."]},
     {"name": "Appearance", "tags": ["..."]},
@@ -101,10 +109,16 @@ section 必须严格是这 7 个、按这个顺序：${GEN_SECTIONS.join(' / ')}
 
 写法要求（优化规则）：
 - 每段 4–10 个标签。每个标签是一个短语单元，不写完整句子，不以句号结尾。
-- 具体可画：用画面上看得见的描述，少用抽象形容词堆砌。
+- 每段先写模型认识的标准 Danbooru 标签（如 cowboy shot, from below, hand on own cheek, pleated skirt），再写 1–3 个描述性短语补充细节。
+- 具体可画：用画面上看得见的描述（材质、褶皱、光斑、反光、飘动方向），不要空洞词（beautiful, amazing, perfect, stunning, epic, aesthetic）。
+- 讲故事：至少 2 个细节服务于 plan.story（道具、环境痕迹、互动对象），让画面有"正在发生"的感觉。
+- 色彩统一：服装、背景、光的颜色都落在 plan.palette 里，并在 Background & Lighting 写出主色调（如 teal and orange color scheme）。
+- 光影具体：写明光源方向和类型（backlighting, rim light, dappled sunlight, neon light from side），并配对应的阴影/高光标签。
+- 构图有层次：Background 写出前景/中景/远景中至少两层（如 foreground petals, distant city lights），景深按需写 depth of field。
+- 合理性：服装与场景/天气匹配；手里的东西要写清手的动作；不出现与人数矛盾的标签。
 - 前后一致：镜头角度、视线方向、动作、光源在各段之间不能矛盾（例如仰拍就配 looking down at viewer）。
 - 去重：同一个意思只写一次，不要换着说法重复。
-- 权重：只给 1–2 个最核心的视觉焦点加权，格式 (tag:1.2)–(tag:1.4)，其他不加。
+- 权重：只给 plan.focus 对应的 1–2 个标签加权，格式 (tag:1.2)–(tag:1.4)，其他不加。
 - 不要写质量词（masterpiece、best quality 等），质量词会自动注入。
 - negative 给 5–10 个针对本主题容易出错的反向标签（如手部、构图、多余人物）。
 - name：20 字以内中文，概括整组画面（如「雨夜霓虹街头的红伞少女」），不是标签堆砌。
@@ -191,11 +205,13 @@ ${LAYOUT_SPEC}`)
   return parts.join('\n\n')
 }
 
+// quality words are injected via the prefix; bare filler adjectives add nothing
+const FILLER = /^(masterpiece|best quality|high quality|ultra[- ]detailed|highres|absurdres|8k|4k|beautiful|amazing|perfect|stunning|epic|aesthetic|gorgeous)$/i
 function cleanList(list: unknown, banIdentity: boolean, removed: string[], seen?: Set<string>): string[] {
   const out: string[] = []
   for (const t0 of Array.isArray(list) ? list : []) {
     const t = String(t0).trim().replace(/[,.]+$/, '').trim()
-    if (!t) continue
+    if (!t || FILLER.test(t.replace(/^\(+|(:[\d.]+)?\)+$/g, ''))) continue
     let kept: string | null = t
     if (banIdentity) {
       kept = sanitizeIdentity(t)

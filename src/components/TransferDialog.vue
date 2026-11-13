@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useDragSelect, listSetter } from '../lib/dragSelect'
 import { ref, computed } from 'vue'
 import { doc } from '../lib/store'
 import { CATEGORIES, RATING_LABEL, type Category } from '../lib/types'
@@ -22,21 +23,8 @@ const shown = computed(() => {
   return doc.sets.filter((s) => (rating.value === 'ALL' || s.category === rating.value)
     && (!k || [s.name, s.folder, ...(s.labels || [])].join(' ').toLowerCase().includes(k)))
 })
-// press and drag down the list to tick / untick many rows at once
-const drag = ref<null | { on: boolean; apply: (k: string, on: boolean) => void }>(null)
-function dragStart(e: MouseEvent, key: string, cur: boolean, apply: (k: string, on: boolean) => void) {
-  if (e.button !== 0) return
-  e.preventDefault()
-  drag.value = { on: !cur, apply }
-  apply(key, !cur)
-  window.addEventListener('mouseup', () => (drag.value = null), { once: true })
-}
-function dragOver(key: string) { drag.value?.apply(key, drag.value.on) }
-const setSel = (id: string, on: boolean) => {
-  const has = sel.value.includes(id)
-  if (on && !has) sel.value = [...sel.value, id]
-  else if (!on && has) sel.value = sel.value.filter((x) => x !== id)
-}
+const { start: dragStart, over: dragOver } = useDragSelect()
+const setSel = listSetter(sel)
 const setPick = (i: string, on: boolean) => { const c = cands.value[+i]; if (c) c.pick = on }
 function pickShown(on: boolean) {
   const ids = shown.value.map((s) => s.id)

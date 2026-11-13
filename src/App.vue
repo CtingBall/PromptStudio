@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useDragSelect } from './lib/dragSelect'
 import { ref, computed, watch, onMounted } from 'vue'
 import { autoBackupOnUpdate, backupAll, APP_VERSION } from './lib/autobackup'
 import { ui, THEMES, dragSplit, clampW } from './lib/ui'
@@ -233,6 +234,23 @@ const sectionNames = computed(() => [...new Set((current.value?.tags || []).map(
 const tagMode = ref(false)
 const tagSel = ref<string[]>([])
 watch(selectedId, () => { tagSel.value = [] })
+const tagDs = useDragSelect()
+let sweptId = ''
+function tagDown(e: MouseEvent, id: string) {
+  if (!tagMode.value || tagSel.value.includes(id)) return // selected chips stay draggable for moving
+  sweptId = id
+  tagDs.start(e, id, false, setTagSel)
+}
+function tagClick(id: string) {
+  if (!tagMode.value) return
+  if (sweptId === id) { sweptId = ''; return }
+  toggleTagSel(id)
+}
+function setTagSel(id: string, on: boolean) {
+  const i = tagSel.value.indexOf(id)
+  if (on && i < 0) tagSel.value.push(id)
+  else if (!on && i >= 0) tagSel.value.splice(i, 1)
+}
 function toggleTagSel(id: string) {
   const i = tagSel.value.indexOf(id)
   i >= 0 ? tagSel.value.splice(i, 1) : tagSel.value.push(id)
@@ -619,10 +637,11 @@ function clampMaxImages() {
               </span>
             </div>
             <div v-if="!hasSections || !secClosed(g.section)" class="chip-grid">
-              <div v-for="t in g.tags" :key="t.id" draggable="true"
+              <div v-for="t in g.tags" :key="t.id" :draggable="!tagMode || tagSel.includes(t.id)"
                 :class="['chip-wrap', { sel: tagSel.includes(t.id) }]"
+                @mousedown="tagDown($event, t.id)" @mouseenter="tagMode && tagDs.over(t.id)"
                 @dragstart.stop="onTagDragStart(t, $event)" @dragend="onDragEnd" @dragover.prevent
-                @drop.prevent.stop="onTagDrop(t, $event)" @click="tagMode && toggleTagSel(t.id)">
+                @drop.prevent.stop="onTagDrop(t, $event)" @click="tagClick(t.id)">
                 <TagChip :tag="t" @remove="removeTag(current!, t.id)" @change="touch(current!)" />
               </div>
             </div>

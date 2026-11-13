@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useDragSelect, listSetter } from '../lib/dragSelect'
 // Online share: share code (offline, free) or a secret GitHub Gist link (optional).
 // Left: pick sets. Right: exactly what the receiver will get.
 import { ref, computed, reactive, watch } from 'vue'
@@ -36,10 +37,8 @@ const q = ref('')
 const list = computed(() => doc.sets.filter((s) => !q.value || s.name.includes(q.value) || s.tags.some((t) => t.en.includes(q.value) || t.zh?.includes(q.value))))
 const picked = computed(() => doc.sets.filter((s) => pick.value.includes(s.id)))
 const focused = computed(() => doc.sets.find((s) => s.id === focus.value) || picked.value[0])
-function toggle(id: string) {
-  pick.value = pick.value.includes(id) ? pick.value.filter((x) => x !== id) : [...pick.value, id]
-  focus.value = id
-}
+const ds = useDragSelect()
+const setPickId = listSetter(pick)
 watch(pick, () => { code.value = ''; link.value = '' })
 
 const summary = computed(() => {
@@ -74,6 +73,7 @@ const genGist = () => run('发布到 Gist', async () => {
 const input = ref('')
 const incoming = ref<PromptSet[]>([])
 const take = ref<string[]>([])
+const setTake = listSetter(take)
 const rfocus = ref<string>()
 const rfocused = computed(() => incoming.value.find((s) => s.id === rfocus.value) || incoming.value[0])
 const existingNames = computed(() => new Set(doc.sets.map((s) => s.name)))
@@ -117,8 +117,9 @@ function doImport() {
           </div>
           <div class="xfer-list share-list">
             <div v-for="s in list" :key="s.id" :class="['xfer-item', { picked: pick.includes(s.id), focus: focused?.id === s.id }]"
-              @click="focus = s.id">
-              <input type="checkbox" :checked="pick.includes(s.id)" style="width: auto" @click.stop="toggle(s.id)" />
+              @click="focus = s.id" @mouseenter="ds.over(s.id)">
+              <span class="ck-hit" @mousedown.stop="ds.start($event, s.id, pick.includes(s.id), setPickId); focus = s.id" @click.stop>
+                <input type="checkbox" :checked="pick.includes(s.id)" style="width: auto; pointer-events: none" tabindex="-1" /></span>
               <div class="thumb sm-thumb"><img v-if="s.shots?.[0]" :src="imgSrc(s.shots[0].id)" /><span v-else>✦</span></div>
               <div style="flex: 1; min-width: 0">
                 <div class="set-name">{{ s.name }}</div>
@@ -209,9 +210,9 @@ function doImport() {
             <button class="primary" :disabled="!!busy || !input.trim()" @click="parse">解析</button>
           </div>
           <div v-if="incoming.length" class="xfer-list share-list">
-            <div v-for="s in incoming" :key="s.id" :class="['xfer-item', { picked: take.includes(s.id), focus: rfocused?.id === s.id }]" @click="rfocus = s.id">
-              <input type="checkbox" :checked="take.includes(s.id)" style="width: auto"
-                @click.stop="take = take.includes(s.id) ? take.filter((x) => x !== s.id) : [...take, s.id]" />
+            <div v-for="s in incoming" :key="s.id" :class="['xfer-item', { picked: take.includes(s.id), focus: rfocused?.id === s.id }]" @click="rfocus = s.id" @mouseenter="ds.over(s.id)">
+              <span class="ck-hit" @mousedown.stop="ds.start($event, s.id, take.includes(s.id), setTake); rfocus = s.id" @click.stop>
+                <input type="checkbox" :checked="take.includes(s.id)" style="width: auto; pointer-events: none" tabindex="-1" /></span>
               <div style="flex: 1; min-width: 0">
                 <div class="set-name">{{ s.name }}</div>
                 <div class="muted share-sub">{{ s.tags.length }} 标签<template v-if="s.regions?.length"> · {{ s.regions.length }} 框</template>

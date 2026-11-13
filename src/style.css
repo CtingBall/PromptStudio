@@ -259,3 +259,7 @@ input:focus, textarea:focus, select:focus { box-shadow: 0 0 0 3px var(--accent-s
 .xfer-list { user-select: none; }
 .xfer-item { transition: background .08s; }
 .xfer-item.picked { background: var(--accent-soft); box-shadow: inset 3px 0 0 var(--accent); }
+
+.ck-hit { display: inline-flex; padding: 4px; margin: -4px; cursor: pointer; }
+.side-list, .chip-grid { -webkit-user-select: none; user-select: none; }
+.chip-grid textarea, .chip-grid input { user-select: text; }
