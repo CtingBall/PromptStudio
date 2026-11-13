@@ -1,5 +1,5 @@
 import { reactive, watch, computed } from 'vue'
-import type { StudioDoc, PromptSet, Tag, Settings } from './types'
+import type { StudioDoc, PromptSet, Tag, Settings, SetVersion } from './types'
 import { DEFAULT_SETTINGS } from './types'
 import { uid, tagsFromPrompt, serializeTags, parseOne } from './tags'
 import { deleteImage } from './imagedb'
@@ -178,5 +178,26 @@ export function addTag(set: PromptSet, en: string): Tag {
 export function removeTag(set: PromptSet, id: string): void {
   const i = set.tags.findIndex((t) => t.id === id)
   if (i >= 0) set.tags.splice(i, 1)
+  touch(set)
+}
+
+// ---- version history: saved before every AI rewrite / bulk change ----
+const HISTORY_MAX = 15
+const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v))
+export function snapshot(set: PromptSet, label: string): void {
+  const v: SetVersion = { at: Date.now(), label, name: set.name, tags: clone(set.tags), negative: set.negative,
+    regions: set.regions?.length ? clone(set.regions) : undefined }
+  const h = set.history || []
+  const last = h[0]
+  // skip if nothing changed since the last saved version
+  if (last && JSON.stringify(last.tags) === JSON.stringify(v.tags) && last.negative === v.negative) return
+  set.history = [v, ...h].slice(0, HISTORY_MAX)
+}
+export function restoreVersion(set: PromptSet, v: SetVersion): void {
+  snapshot(set, '回退前')
+  set.name = v.name
+  set.tags = clone(v.tags)
+  set.negative = v.negative
+  if (v.regions) set.regions = clone(v.regions)
   touch(set)
 }

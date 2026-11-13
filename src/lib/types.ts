@@ -50,6 +50,7 @@ export interface PromptSet {
   regions?: Region[]                    // bbox / grid regions, coords normalized 0–1
   canvas?: { w: number; h: number }     // target image size for the regions
   chars?: Char[]                        // characters (A/B/…) used by layout boxes
+  history?: SetVersion[]                // newest first, capped
   tags: Tag[]
   negative: string
   createdAt: number
@@ -78,7 +79,25 @@ export interface Settings {
   bboxScale: 1 | 1000    // bbox output coordinate scale: 0–1 floats or 0–1000 ints
   genChars: string       // characters, one per line: 名字=触发词 | 引导词
   firstLine: string      // put on line 1 of the MOSS prompt, e.g. <|artist|>fkey<|/artist|>
+  genFormat: PromptFormat // how generated prompts are written
+  routes: Partial<Record<AiTask, AiRoute>> // per-feature model override; empty fields fall back to the main AI
 }
+
+export type PromptFormat = 'tags' | 'natural' | 'mixed'
+export const FORMAT_LABEL: Record<PromptFormat, string> = { tags: '标签', natural: '自然语言', mixed: '标签+自然语言' }
+
+export type AiTask = 'translate' | 'generate' | 'edit' | 'classify' | 'review'
+export interface AiRoute { baseUrl?: string; apiKey?: string; model?: string }
+export const AI_TASKS: Array<{ id: AiTask; label: string; hint: string }> = [
+  { id: 'translate', label: '翻译', hint: '标签中英互译，便宜快速的模型就够' },
+  { id: 'generate', label: '一键生成 / 反推', hint: '写提示词，用最强的；带参考图时要能看图' },
+  { id: 'edit', label: 'AI 修改 / 变体', hint: '按要求改写已有提示词' },
+  { id: 'classify', label: '自动整理', hint: '分级、文件夹、标签、起名' },
+  { id: 'review', label: '诊断 / 返图检查', hint: '返图检查需要能看图的模型' },
+]
+
+/** a saved earlier state of a set, for history / rollback */
+export interface SetVersion { at: number; label: string; name: string; tags: Tag[]; negative: string; regions?: Region[] }
 
 export const DEFAULT_GEN_PREFIX =
   'masterpiece, best quality, ultra-detailed, highres, illustration, layered composition, detailed composition'
@@ -100,6 +119,8 @@ export const DEFAULT_SETTINGS: Settings = {
   bboxScale: 1000,
   genChars: '',
   firstLine: '',
+  genFormat: 'tags',
+  routes: {},
 }
 
 // Section order used for generation (matches the user's template).

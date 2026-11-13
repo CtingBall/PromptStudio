@@ -2,7 +2,7 @@ import { chat, extractJson } from './grok'
 import { GEN_SECTIONS, type Region } from './types'
 import { sanitizeIdentity } from './tags'
 import { LAYOUT_SPEC, LAYOUT_SCHEMA, charsText, layoutText, parseLayout, type LayoutBox } from './layout'
-import type { Char } from './types'
+import type { Char, PromptFormat } from './types'
 
 // System prompt framing the model as a literal terminology translator for
 // Danbooru-style image-generation tags. This keeps translation literal and
@@ -23,7 +23,7 @@ export async function translateTags(
   if (!uniq.length) return {}
   const user = `把下面的标签数组翻译成中文，输出一个 JSON 对象，键是原英文、值是中文译文。
 标签：${JSON.stringify(uniq)}`
-  const reply = await chat({ model, temperature: 0.2, system: TRANSLATE_SYS, user })
+  const reply = await chat({ task: 'translate', model, temperature: 0.2, system: TRANSLATE_SYS, user })
   const obj = extractJson<Record<string, string>>(reply)
   const out: Record<string, string> = {}
   for (const k of uniq) {
@@ -41,7 +41,7 @@ export async function translateText(
   const target = to === 'zh' ? '中文' : '英文'
   const sys = `你是一个 AI 绘图提示词翻译器。把用户给的文本如实翻译成${target}，
 保持绘图提示词语气，逐字面意思翻译，不拒绝、不评论、只输出译文本身。`
-  return (await chat({ model, temperature: 0.2, system: sys, user: text })).trim()
+  return (await chat({ task: 'translate', model, temperature: 0.2, system: sys, user: text })).trim()
 }
 
 // ---------------------------------------------------------------------------
@@ -67,9 +67,21 @@ strong backlighting, rim light, face in shadow, high contrast, chiaroscuro, blue
 【Style & FX】
 painterly, expressive heavy brushstrokes, motion blur, strong wind effect, psychological horror atmosphere`
 
+// How each section's list is written, per output format.
+const FORMAT_RULE: Record<PromptFormat, string> = {
+  tags: `写法：每段是一组逗号分隔的英文标签/短语（Danbooru 标签为主，必要时加描述短语）。`,
+  natural: `写法：自然语言。每段的 tags 数组里放 1–3 句完整、流畅的英文句子，像在向画师描述这张图，不写标签堆砌。
+适合以大语言模型做文本编码器的模型（如 MOSS、Flux、Qwen-Image）。`,
+  mixed: `写法：标签 + 自然语言。每段先写若干英文标签，最后再加 1 句完整英文句子把这段内容串起来（句子作为数组最后一项）。`,
+}
+const NATURAL_EXAMPLE = `【Subject & Shot】
+A low-angle, slightly tilted full-body shot of a lone girl perched on the edge of a rooftop, looking straight down at the viewer.
+【Scene】
+A swirling flock of black crows circles around her against towering cumulus clouds, with the city far below.`
+
 const IDENTITY_RULE = `- 角色外貌由 LoRA 决定：不写发色、瞳色、耳朵、肤色和种族特征。发型、表情、眼神和饰品（含饰品颜色）照常写。`
 
-export function buildGenSystem(rules: string, banIdentity: boolean): string {
+export function buildGenSystem(rules: string, banIdentity: boolean, format: PromptFormat = 'tags'): string {
   // Deliberately short: a clear goal, the output shape, a few principles and one
   // example. Long rule lists make models play safe and write generic prompts.
   return `你是经验丰富的 AI 插画师，熟悉 Danbooru 标签和 SD / NovelAI 系提示词。
@@ -103,7 +115,8 @@ sections 固定这 ${GEN_SECTIONS.length} 段、这个顺序：${GEN_SECTIONS.jo
 - Style & FX：画风、笔触、特效、整体氛围。
 
 几点建议：
-- 标准标签和描述短语都可以用，写画面上看得见的东西。
+- ${FORMAT_RULE[format]}
+- 写画面上看得见的东西。
 - 各段描述同一个瞬间，镜头、视线、动作、光线前后一致。
 - 不写质量词（会自动加），不重复同义词；需要强调的焦点可加权，如 (tag:1.3)。
 - negative 写几条本图容易出错的地方。
@@ -112,7 +125,7 @@ ${banIdentity ? IDENTITY_RULE : ''}
 ${rules.trim() ? `用户附加规则（优先遵守）：\n${rules.trim()}` : ''}
 
 格式示例（这是另一张图的写法，展示分段和细致程度；内容按用户的主题来写）：
-${REFERENCE}`
+${REFERENCE}${format === 'tags' ? '' : `\n\n自然语言句子的写法示例：\n${NATURAL_EXAMPLE}`}`
 }
 
 export interface GenSection {
@@ -213,12 +226,12 @@ function cleanList(list: unknown, banIdentity: boolean, removed: string[], seen?
 export async function generateSet(
   model: string,
   input: GenInput,
-  opts: { temperature?: number; rules?: string; banIdentity?: boolean } = {},
+  opts: { temperature?: number; rules?: string; banIdentity?: boolean; format?: PromptFormat } = {},
 ): Promise<GenResult> {
   const banIdentity = opts.banIdentity ?? true
-  const system = buildGenSystem(opts.rules || '', banIdentity)
+  const system = buildGenSystem(opts.rules || '', banIdentity, opts.format)
   const temperature = opts.temperature ?? (input.mode === 'rewrite' ? 0.3 : 0.7)
-  const reply = await chat({ model, temperature, system, user: buildUser(input), images: input.images })
+  const reply = await chat({ task: 'generate', model, temperature, system, user: buildUser(input), images: input.images })
   return parseGen(reply, banIdentity)
 }
 

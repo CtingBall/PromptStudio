@@ -25,7 +25,7 @@ ${LAYOUT_SPEC}`)
 
 function genOpts() {
   const s = settings()
-  return { model: s.model, rules: s.genRules, ban: s.banIdentity }
+  return { model: s.model, rules: s.genRules, ban: s.banIdentity, format: s.genFormat }
 }
 
 // Apply a natural-language instruction to the current prompt, keep structure.
@@ -39,7 +39,7 @@ ${prompt}
 修改要求：${instruction}
 
 按要求修改后，输出完整的新提示词（全部分段，不只是改动部分）。没被要求修改的内容尽量保持原样。` + layoutBlock(ctx, '画框也按修改要求同步调整（如换服装要改角色框描述）。')
-  const reply = await chat({ model: o.model, temperature, system: buildGenSystem(o.rules, o.ban), user, images })
+  const reply = await chat({ task: 'edit', model: o.model, temperature, system: buildGenSystem(o.rules, o.ban, o.format), user, images })
   return parseGen(reply, o.ban)
 }
 
@@ -76,7 +76,7 @@ name 要概括整组画面（如「雨夜霓虹街头的红伞少女」），不
 已有标签：${labels.join('，') || '（无）'}
 提示词：
 ${prompt}`
-  const r = extractJson<any>(await chat({ temperature: 0.2, system, user }))
+  const r = extractJson<any>(await chat({ task: 'classify', temperature: 0.2, system, user }))
   const rating = (['SAFE', 'SFW', 'NSFW'].includes(r?.rating) ? (r.rating as Category) : undefined)
   return {
     rating,
@@ -92,7 +92,7 @@ export interface ReviewResult { score: number; summary: string; missing: string[
 // Compare a result image against its prompt; returns a report plus a fixed prompt.
 export async function aiReview(prompt: string, negative: string, image: string, ctx?: LayoutCtx): Promise<ReviewResult> {
   const o = genOpts()
-  const system = buildGenSystem(o.rules, o.ban) + `
+  const system = buildGenSystem(o.rules, o.ban, o.format) + `
 
 本次任务是「返图诊断」：对比附图（用这组提示词生成的结果）和提示词。
 在上面的 JSON 里额外加入字段：
@@ -101,7 +101,7 @@ export async function aiReview(prompt: string, negative: string, image: string, 
 "suggestions": ["中文改进建议"]。
 sections 和 negative 给出修正后的完整提示词：对没出现的元素加强或加权，把问题写进 negative。`
   const user = `提示词：\n${prompt}\n\n负向词：${negative || '（无）'}`
-  const reply = await chat({ model: o.model, temperature: 0.3, system, user: user + layoutBlock(ctx, '对照返图检查画框：对话气泡是否出现在说话者旁边、角色是否画在对应框里；把问题写进 missing/extra，并修正框的描述或位置。'), images: [image] })
+  const reply = await chat({ task: 'review', model: o.model, temperature: 0.3, system, user: user + layoutBlock(ctx, '对照返图检查画框：对话气泡是否出现在说话者旁边、角色是否画在对应框里；把问题写进 missing/extra，并修正框的描述或位置。'), images: [image] })
   const r = extractJson<any>(reply)
   const list = (v: unknown) => (Array.isArray(v) ? v.map(String) : [])
   return {
@@ -117,7 +117,7 @@ sections 和 negative 给出修正后的完整提示词：对没出现的元素�
 // Critique a prompt with no image: score, issues, and a fixed prompt.
 export async function aiCritique(prompt: string, negative: string, ctx?: LayoutCtx): Promise<ReviewResult> {
   const o = genOpts()
-  const system = buildGenSystem(o.rules, o.ban) + `
+  const system = buildGenSystem(o.rules, o.ban, o.format) + `
 
 本次任务是「提示词诊断」：审阅下面这组提示词本身（没有图）。
 在上面的 JSON 里额外加入字段：
@@ -126,7 +126,7 @@ export async function aiCritique(prompt: string, negative: string, ctx?: LayoutC
 "suggestions": ["中文改进建议"]。
 sections 和 negative 给出优化后的完整提示词。`
   const user = `提示词：\n${prompt}\n\n负向词：${negative || '（无）'}`
-  const reply = await chat({ model: o.model, temperature: 0.3, system, user: user + layoutBlock(ctx, '按规范检查画框（对话归属、角色区分、背景不做框、描述是否具体），问题写进 missing/extra，并给出修正后的布局。') })
+  const reply = await chat({ task: 'review', model: o.model, temperature: 0.3, system, user: user + layoutBlock(ctx, '按规范检查画框（对话归属、角色区分、背景不做框、描述是否具体），问题写进 missing/extra，并给出修正后的布局。') })
   const r = extractJson<any>(reply)
   const list = (v: unknown) => (Array.isArray(v) ? v.map(String) : [])
   return {

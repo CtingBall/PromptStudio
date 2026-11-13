@@ -18,7 +18,10 @@ import {
 import { translateTags } from './lib/translate'
 import { chat } from './lib/grok'
 import { tagsFromPrompt, groupTags } from './lib/tags'
-import { lookup } from './lib/store'
+import { lookup, snapshot } from './lib/store'
+import HistoryDialog from './components/HistoryDialog.vue'
+import ManualDialog from './components/ManualDialog.vue'
+import { AI_TASKS, type AiTask } from './lib/types'
 import type { PromptSet, Tag, Region, Char } from './lib/types'
 import { CATEGORIES, RATING_LABEL } from './lib/types'
 import LayoutPanel from './components/LayoutPanel.vue'
@@ -37,13 +40,21 @@ const busyMsg = ref('')
 const toast = ref('')
 
 const testing = ref(false)
+const testTask = ref<AiTask | ''>('')
+const showRoutes = ref(false)
+const showHistory = ref(false)
+const showManual = ref(false)
+const manualTip = ref(!localStorage.getItem('ps-manual-seen'))
+function dismissTip(open = false) { manualTip.value = false; localStorage.setItem('ps-manual-seen', '1'); if (open) showManual.value = true }
+function route(t: AiTask) { return (doc.settings.routes ||= {})[t] ||= {} }
+function testRoute(t: AiTask) { testTask.value = t; testConn().finally(() => (testTask.value = '')) }
 const testMsg = ref('')
 const testOk = ref(false)
 async function testConn() {
   testing.value = true
   testMsg.value = ''
   try {
-    const r = await chat({ user: '只回复两个字：你好', temperature: 0 })
+    const r = await chat({ user: '只回复两个字：你好', temperature: 0, task: testTask.value || undefined })
     testOk.value = true
     testMsg.value = '连接成功：' + r.slice(0, 20)
   } catch (e: any) {
@@ -152,6 +163,7 @@ function onAddTag() {
 // one-step undo for whole-tag-list rewrites (编辑原文 / 全部重翻)
 const tagUndo = ref<{ id: string; tags: Tag[]; label: string } | null>(null)
 function snapshotTags(set: PromptSet, label: string) {
+  snapshot(set, label + '前')
   tagUndo.value = { id: set.id, tags: JSON.parse(JSON.stringify(set.tags)), label }
 }
 function undoTags() {
@@ -272,6 +284,7 @@ function bulkDeleteTags() {
   const set = current.value
   if (!set || !tagSel.value.length) return
   if (!confirm(`删除选中的 ${tagSel.value.length} 个标签？`)) return
+  snapshot(set, '批量删除前')
   set.tags = set.tags.filter((t) => !tagSel.value.includes(t.id))
   flash(`已删除 ${tagSel.value.length} 个标签`)
   tagSel.value = []
@@ -552,8 +565,15 @@ function clampMaxImages() {
       </div>
       <button class="ghost" :title="ui.asideOpen ? '收起右侧面板' : '展开右侧面板'" @click="ui.asideOpen = !ui.asideOpen">
         {{ ui.asideOpen ? '⇥ 收起侧栏' : '⇤ 返图/AI' }}</button>
+      <button class="ghost" title="新手手册" @click="showManual = true">📖 手册</button>
       <button class="ghost" title="设置" @click="showSettings = true">⚙️</button>
     </header>
+    <div v-if="manualTip" class="tip-bar">
+      <span>👋 第一次使用？可以看看「📖 手册」，几分钟了解标签 / 自然语言写法的区别和各个功能。</span>
+      <span class="spacer" />
+      <button class="primary sm" @click="dismissTip(true)">打开手册</button>
+      <button class="ghost sm" @click="dismissTip()">知道了，不再提示</button>
+    </div>
 
     <div class="body">
       <Sidebar v-model:selected="selectedId" @toast="flash" @export="openXfer('export', $event)" />
@@ -569,6 +589,7 @@ function clampMaxImages() {
             <option v-for="c in CATEGORIES" :key="c" :value="c">{{ RATING_LABEL[c] }}</option>
           </select>
           <div class="btn-group">
+            <button :title="'AI 修改或批量操作前自动保存，最多 15 个'" @click="showHistory = true">🕘 历史{{ current.history?.length ? ' ' + current.history.length : '' }}</button>
             <button @click="dupSet(current.id)">复制组</button>
             <button class="danger" @click="delSet(current)">删除组</button>
           </div>
@@ -733,6 +754,19 @@ function clampMaxImages() {
             <input v-model="doc.settings.model" placeholder="grok-4-fast"
               style="width: 100%; margin-top: 4px" />
           </label>
+          <div>
+            <button class="ghost sm" @click="showRoutes = !showRoutes">{{ showRoutes ? '▾' : '▸' }} 各功能单独设置模型（详情）</button>
+            <span class="muted" style="font-size: 12px; margin-left: 6px">不填就用上面的主 AI</span>
+            <div v-if="showRoutes" class="route-list">
+              <div v-for="t in AI_TASKS" :key="t.id" class="route-row">
+                <div><strong>{{ t.label }}</strong><div class="muted" style="font-size: 12px">{{ t.hint }}</div></div>
+                <input v-model="route(t.id).model" :placeholder="'模型（默认 ' + (doc.settings.model || '主模型') + '）'" />
+                <input v-model="route(t.id).baseUrl" placeholder="地址（默认同主 AI）" />
+                <input v-model="route(t.id).apiKey" type="password" placeholder="Key（默认同主 AI）" />
+                <button class="ghost sm" :disabled="testing" @click="testRoute(t.id)">测试</button>
+              </div>
+            </div>
+          </div>
           <label>
             翻译温度 {{ doc.settings.temperature.toFixed(2) }}
             <input type="range" min="0" max="1" step="0.05" v-model.number="doc.settings.temperature" style="width: 100%" />
@@ -786,6 +820,8 @@ function clampMaxImages() {
       </div>
     </div>
 
+    <HistoryDialog v-if="showHistory && current" :set="current" @close="showHistory = false" @toast="flash" />
+    <ManualDialog v-if="showManual" @close="showManual = false" />
     <TransferDialog v-if="xfer" :mode="xfer" :preselect="xferIds" :current="selectedId"
       @close="xfer = ''" @toast="flash" @select="selectedId = $event" />
     <Credits />

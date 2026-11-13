@@ -2,8 +2,10 @@
 // app (DSH-style). Requests go through the local /llm/chat forwarder, which adds
 // the Authorization header server-side and avoids browser CORS.
 import { settings } from './store'
+import type { AiTask } from './types'
 
 export interface ChatOpts {
+  task?: AiTask     // picks the per-feature model from settings.routes (falls back to the main AI)
   model?: string
   temperature?: number
   system?: string
@@ -13,8 +15,12 @@ export interface ChatOpts {
 
 export async function chat(opts: ChatOpts): Promise<string> {
   const s = settings()
-  if (!s.baseUrl) throw new Error('未配置 API 地址，请在设置里填写')
-  if (!s.apiKey) throw new Error('未配置 API Key，请在设置里填写')
+  const r = (opts.task && s.routes?.[opts.task]) || {}
+  const baseUrl = r.baseUrl?.trim() || s.baseUrl
+  const apiKey = r.apiKey?.trim() || s.apiKey
+  const model = r.model?.trim() || opts.model || s.model
+  if (!baseUrl) throw new Error('未配置 API 地址，请在设置里填写')
+  if (!apiKey) throw new Error('未配置 API Key，请在设置里填写')
 
   const messages: Array<{ role: string; content: unknown }> = []
   if (opts.system) messages.push({ role: 'system', content: opts.system })
@@ -34,11 +40,11 @@ export async function chat(opts: ChatOpts): Promise<string> {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'x-base-url': s.baseUrl,
-      'x-api-key': s.apiKey,
+      'x-base-url': baseUrl,
+      'x-api-key': apiKey,
     },
     body: JSON.stringify({
-      model: opts.model || s.model,
+      model,
       temperature: opts.temperature ?? s.temperature,
       messages,
     }),

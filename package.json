@@ -1,6 +1,6 @@
 {
   "name": "prompt-studio",
-  "version": "0.2.2",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -9,7 +9,8 @@
     "build": "vue-tsc -b && vite build",
     "dist": "vue-tsc -b && vite build && electron-builder --win --publish never",
     "release": "vue-tsc -b && vite build && electron-builder --win --publish always",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "node --import ./tests/resolve-ts.mjs --test --experimental-test-isolation=none tests/core.test.ts"
   },
   "dependencies": {
     "electron-updater": "^6.8.11"

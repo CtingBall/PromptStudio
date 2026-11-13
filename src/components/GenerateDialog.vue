@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { FORMAT_LABEL } from '../lib/types'
+const FORMAT_TIP = { tags: 'SD / NovelAI / Illustrious / Anima', natural: 'MOSS / Flux / Qwen-Image 等', mixed: '两类模型都想兼顾时' } as const
 import { ref, reactive, computed } from 'vue'
 import { generateSet, type GenSection, type GenMode } from '../lib/translate'
 import { doc, settings } from '../lib/store'
@@ -101,7 +103,7 @@ async function run() {
       autoLayout: useAuto.value,
       grid: autoGrid.value,
       chars: chars.value,
-    }, { temperature: temp.value, rules: s.genRules, banIdentity: s.banIdentity })
+    }, { temperature: temp.value, rules: s.genRules, banIdentity: s.banIdentity, format: s.genFormat })
     if (!r.sections.length) throw new Error('模型没有返回可用的标签，请重试或换个模型')
     removed.value = r.removed
     const neg = [...s.genNegative.split(',').map((t) => t.trim()).filter(Boolean), ...r.negative]
@@ -208,6 +210,14 @@ async function run() {
         <div v-if="chars.length" class="muted" style="font-size: 12px">
           <span v-for="c in chars" :key="c.id" style="margin-right: 10px">{{ c.id }}：{{ c.name }}{{ c.trigger ? '（' + c.trigger + '）' : '' }}{{ c.guide ? ' | ' + c.guide : '' }}{{ c.outfit ? ' | 👗' + c.outfit : '' }}</span>
         </div>
+      </div>
+
+      <div class="row" style="margin-top: 10px">
+        <label class="muted">提示词写法</label>
+        <div class="btn-group">
+          <button v-for="(l, f) in FORMAT_LABEL" :key="f" :class="{ on: doc.settings.genFormat === f }" @click="doc.settings.genFormat = f">{{ l }}</button>
+        </div>
+        <span class="muted" style="font-size: 12px">{{ FORMAT_TIP[doc.settings.genFormat] }}（区别见 📖 手册）</span>
       </div>
 
       <div class="row" style="margin-top: 10px">

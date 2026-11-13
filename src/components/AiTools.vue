@@ -5,7 +5,7 @@
 // can never write the result onto the wrong set.
 import { ref } from 'vue'
 import type { PromptSet, Tag } from '../lib/types'
-import { doc, touch, promptText, buildTags, dedupe, settings, newSet, folders, allLabels } from '../lib/store'
+import { doc, touch, snapshot, promptText, buildTags, dedupe, settings, newSet, folders, allLabels } from '../lib/store'
 import { aiEdit, aiVariants, aiClassify, aiReview, aiCritique, translateSetMissing, QUICK_ACTIONS, ctxOf, type ReviewResult } from '../lib/ai'
 import { boxesToRegions } from '../lib/layout'
 import type { Region } from '../lib/types'
@@ -36,6 +36,7 @@ function withNeg(base: string, r: GenResult) { return dedupe([...base.split(',')
 
 function apply(set: PromptSet, r: GenResult) {
   if (!r.sections.length) throw new Error('模型没有返回可用的标签')
+  snapshot(set, 'AI 修改前')
   undo.value = { id: set.id, tags: JSON.parse(JSON.stringify(set.tags)), negative: set.negative, name: set.name,
     regions: set.regions ? JSON.parse(JSON.stringify(set.regions)) : undefined }
   set.tags = buildTags(settings().genPrefix, r.sections)
@@ -115,7 +116,7 @@ function reverseImage(id: string) {
     if (!img) throw new Error('找不到图片')
     const s0 = settings()
     const r = await generateSet(s0.model, { mode: 'theme', text: instruction.value.trim(), images: [img] },
-      { rules: s0.genRules, banIdentity: s0.banIdentity })
+      { rules: s0.genRules, banIdentity: s0.banIdentity, format: s0.genFormat })
     const s = addSetFrom(set, r, `${set.name} 反推`)
     s.shots = [{ id, at: Date.now() }]
     emit('select', s.id)
