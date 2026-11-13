@@ -52,7 +52,7 @@ function createWindow() {
   win = new BrowserWindow({
     width: 1440, height: 920, minWidth: 960, minHeight: 600,
     show: false, backgroundColor: '#1b1d22', title: '千夏绘卷',
-    icon: path.join(__dirname, '..', 'build', 'icon.png'),
+    icon: path.join(__dirname, '..', 'build', process.platform === 'win32' ? 'icon.ico' : 'icon.png'),
     webPreferences: { contextIsolation: true, sandbox: true },
   })
   win.once('ready-to-show', () => win.show())

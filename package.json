@@ -1,6 +1,6 @@
 {
   "name": "prompt-studio",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "private": true,
   "type": "module",
   "scripts": {
@@ -34,7 +34,8 @@
       "dist/**",
       "electron/**",
       "build/icon.png",
-      "package.json"
+      "package.json",
+      "build/icon.ico"
     ],
     "directories": {
       "output": "release",
@@ -42,7 +43,7 @@
     },
     "win": {
       "target": "nsis",
-      "icon": "build/icon.png",
+      "icon": "build/icon.ico",
       "artifactName": "ChinatsuScroll-Setup-${version}.${ext}"
     },
     "nsis": {
@@ -53,7 +54,10 @@
       "createStartMenuShortcut": true,
       "shortcutName": "千夏绘卷",
       "deleteAppDataOnUninstall": false,
-      "uninstallDisplayName": "千夏绘卷 Chinatsu Scroll"
+      "uninstallDisplayName": "千夏绘卷 Chinatsu Scroll",
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico",
+      "installerHeaderIcon": "build/icon.ico"
     },
     "publish": [
       {

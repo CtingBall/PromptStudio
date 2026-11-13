@@ -263,3 +263,5 @@ input:focus, textarea:focus, select:focus { box-shadow: 0 0 0 3px var(--accent-s
 .ck-hit { display: inline-flex; padding: 4px; margin: -4px; cursor: pointer; }
 .side-list, .chip-grid { -webkit-user-select: none; user-select: none; }
 .chip-grid textarea, .chip-grid input { user-select: text; }
+
+img.brand-logo { display: block; object-fit: cover; padding: 0; background: none; }
