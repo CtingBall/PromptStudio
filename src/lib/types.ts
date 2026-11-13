@@ -104,11 +104,12 @@ export const DEFAULT_SETTINGS: Settings = {
 
 // Section order used for generation (matches the user's template).
 export const GEN_SECTIONS = [
-  'Common',
-  'Appearance',
+  'Subject & Shot',
+  'Character',
   'Expression',
-  'Pose',
+  'Pose & Action',
   'Outfit',
-  'Atmosphere & Dynamic FX',
-  'Background & Lighting',
+  'Scene',
+  'Lighting & Color',
+  'Style & FX',
 ] as const

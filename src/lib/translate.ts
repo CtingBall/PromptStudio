@@ -50,20 +50,22 @@ export async function translateText(
 
 // Format reference taken from the user's template (quality line removed: it is
 // injected separately as the prefix).
-const REFERENCE = `【Common】
-1girl, solo, low-angle shot, dynamic Dutch angle, tilted framing, full-body view, sitting on high ledge, looking down at viewer, psychological aesthetic, dark surreal atmosphere,
-【Appearance】
-wildly tangled long hair fluttering and thrashing chaotically in the wind, heavy long bangs completely obscuring one eye, loose unkempt locks blowing across the face, subtle dark ribbons adorning the hair,
+const REFERENCE = `【Subject & Shot】
+1girl, solo, from below, dutch angle, full body, sitting on ledge, looking down at viewer, dark surreal scene
+【Character】
+long hair, messy hair, hair over one eye, hair blowing in wind, hair ribbon, slender
 【Expression】
-unhinged and manic expression, ((single wide-open eye staring intently downward with dilated pupil:1.4)), crazy unblinking psychological gaze, tiny parted mouth, haunting and detached aura,
-【Pose】
-sitting precariously on the edge of a high rooftop parapet, one hand raised clutching the side of her head, legs dangling freely over the edge with one knee slightly bent forward, head tilted unnervingly toward the lens,
+crazy eyes, ((single wide-open eye staring down with dilated pupil:1.4)), unblinking stare, parted lips, detached haunting aura
+【Pose & Action】
+sitting on rooftop parapet edge, hand on own head, clutching hair, legs dangling over the edge, one knee bent, head tilt toward viewer
 【Outfit】
-classic traditional sailor uniform, sailor shirt with dark striped sailor collar, neatly tied bow ribbon at the chest, pleated dark school skirt, dark knee-high socks, school loafers,
-【Atmosphere & Dynamic FX】
-((a swirling flock of black birds flying erratically around the character:1.3)), scattered silhouettes of crows with motion blur, fierce gusts of wind thrashing the hair and uniform, expressive heavy brushstrokes,
-【Background & Lighting】
-rooftop parapet edge, massive towering cumulus clouds, patches of deep blue sky between cloud breaks, strong bright backlighting, character's front draped in deep shadows, high-contrast chiaroscuro lighting`
+serafuku, white sailor shirt, dark striped sailor collar, red bow tie, pleated dark skirt, kneehighs, loafers
+【Scene】
+rooftop, ((flock of crows swirling around her:1.3)), crow silhouettes, flying feathers, towering cumulus clouds, patches of blue sky, city far below
+【Lighting & Color】
+strong backlighting, rim light, face in shadow, high contrast, chiaroscuro, blue and black color scheme
+【Style & FX】
+painterly, expressive heavy brushstrokes, motion blur, strong wind effect, psychological horror atmosphere`
 
 const IDENTITY_RULE = `- 角色外貌由 LoRA 决定：不写发色、瞳色、耳朵、肤色和种族特征。发型、表情、眼神和饰品（含饰品颜色）照常写。`
 
@@ -71,25 +73,34 @@ export function buildGenSystem(rules: string, banIdentity: boolean): string {
   // Deliberately short: a clear goal, the output shape, a few principles and one
   // example. Long rule lists make models play safe and write generic prompts.
   return `你是经验丰富的 AI 插画师，熟悉 Danbooru 标签和 SD / NovelAI 系提示词。
-把用户的主题想象成一张具体、有画面感的插画，再写成结构化英文提示词。主题没说的部分由你自由发挥，大胆一些。
+把用户的主题想象成一张具体、有画面感的插画，再写成结构化英文提示词。
+用户给出的内容（主题里的每个细节、参考图、原始提示词）要尽可能完整还原，一项都不要丢；用户没说到的部分再由你自由发挥，大胆一些。
 
 先用一句话在 idea 里想好这张图（谁、在哪、在做什么、什么氛围），再写各段。只输出 JSON：
 {
   "idea": "一句话画面构想",
   "sections": [
-    {"name": "Common", "tags": []},
-    {"name": "Appearance", "tags": []},
+    {"name": "Subject & Shot", "tags": []},
+    {"name": "Character", "tags": []},
     {"name": "Expression", "tags": []},
-    {"name": "Pose", "tags": []},
+    {"name": "Pose & Action", "tags": []},
     {"name": "Outfit", "tags": []},
-    {"name": "Atmosphere & Dynamic FX", "tags": []},
-    {"name": "Background & Lighting", "tags": []}
+    {"name": "Scene", "tags": []},
+    {"name": "Lighting & Color", "tags": []},
+    {"name": "Style & FX", "tags": []}
   ],
   "negative": [],
   "name": "20字以内中文画面概括"
 }
-sections 固定这 7 段、这个顺序：${GEN_SECTIONS.join(' / ')}。
-Common 放人数、镜头、取景和整体风格；其余段按名字写，光照放在最后一段。
+sections 固定这 ${GEN_SECTIONS.length} 段、这个顺序：${GEN_SECTIONS.join(' / ')}。
+- Subject & Shot：人数、镜头角度、取景范围、构图、一句总体画面。
+- Character：发型、发长、刘海、体型、发饰等外观（不含服装）。
+- Expression：表情、眼神、视线。
+- Pose & Action：动作、手部、身体朝向、与道具/他人的互动、所在位置。
+- Outfit：服装从上到下，再写配件。
+- Scene：场景、道具、环境元素，前景/远景。
+- Lighting & Color：光源与光影、色调。
+- Style & FX：画风、笔触、特效、整体氛围。
 
 几点建议：
 - 标准标签和描述短语都可以用，写画面上看得见的东西。
@@ -100,7 +111,7 @@ Common 放人数、镜头、取景和整体风格；其余段按名字写，光�
 ${banIdentity ? IDENTITY_RULE : ''}
 ${rules.trim() ? `用户附加规则（优先遵守）：\n${rules.trim()}` : ''}
 
-示例（只参考格式和细致程度，不要照抄内容）：
+格式示例（这是另一张图的写法，展示分段和细致程度；内容按用户的主题来写）：
 ${REFERENCE}`
 }
 
@@ -151,7 +162,7 @@ function buildUser(input: GenInput): string {
   if (input.mode === 'theme') {
     parts.push(`主题：${input.text || '（见参考图）'}`)
   } else if (input.mode === 'rewrite') {
-    parts.push(`下面是一组原始提示词。把它整理改写成上述结构：保留原意和所有有效元素，归入合适分段，去掉重复与矛盾，修正写法，必要时补少量细节让前后一致；原有权重保留。
+    parts.push(`下面是一组原始提示词。把它整理成上述结构，尽可能完整还原：原有的每个元素和权重都保留，只归入合适分段、合并完全重复的词、修正明显写错的地方；不删改原意，也不额外添加原文没有的内容。
 原始提示词：
 ${input.text}`)
   } else {
@@ -173,7 +184,7 @@ ${LAYOUT_SPEC}`)
   }
   if (input.chars?.length) parts.push(charsText(input.chars))
   if (input.images?.length) {
-    parts.push(`已附 ${input.images.length} 张参考图：参考它们的构图、姿势、服装、场景、光影与画风来写标签；文字描述与参考图冲突时以文字为准。`)
+    parts.push(`已附 ${input.images.length} 张参考图：尽可能还原图里的画面：构图与镜头、人物动作和手势、服装每个部件、场景与道具、光影色调、画风笔触，看得见的细节都写进对应分段（角色外貌限制照旧）。文字描述与参考图冲突时以文字为准。`)
   }
   parts.push('请按要求生成。')
   return parts.join('\n\n')
@@ -222,7 +233,7 @@ export function parseGen(reply: string, banIdentity: boolean): GenResult {
   } else if (obj?.sections && typeof obj.sections === 'object') {
     raw = Object.entries(obj.sections).map(([name, tags]) => ({ name, tags }))
   } else if (Array.isArray(obj?.positive)) {
-    raw = [{ name: 'Common', tags: obj.positive }]
+    raw = [{ name: 'Subject & Shot', tags: obj.positive }]
   }
 
   const removed: string[] = []
