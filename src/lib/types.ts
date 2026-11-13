@@ -83,8 +83,8 @@ export interface Settings {
   routes: Partial<Record<AiTask, AiRoute>> // per-feature model override; empty fields fall back to the main AI
 }
 
-export type PromptFormat = 'tags' | 'natural' | 'mixed'
-export const FORMAT_LABEL: Record<PromptFormat, string> = { tags: '标签', natural: '自然语言', mixed: '标签+自然语言' }
+export type PromptFormat = 'tags' | 'natural' | 'mixed' | 'gbc'
+export const FORMAT_LABEL: Record<PromptFormat, string> = { tags: '标签', natural: '自然语言', mixed: '标签+自然语言', gbc: 'GBC 图结构' }
 
 export type AiTask = 'translate' | 'generate' | 'edit' | 'classify' | 'review'
 export interface AiRoute { baseUrl?: string; apiKey?: string; model?: string }

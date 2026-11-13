@@ -56,6 +56,10 @@ const tab = ref<(typeof TABS)[number]['id']>('start')
               <td>标签保证关键元素（角色触发词、服装、画风）一定出现，句子补上关系和动作；对新旧模型都不会太差。</td>
               <td>最长；两部分写得矛盾时模型会混乱；在纯标签模型上句子部分多半被忽略，等于白写。</td>
               <td>同时训练过两种标注的模型（如 MOSS 的 tags+NL、部分 Illustrious 微调），或不确定时的折中</td></tr>
+            <tr><td><b>GBC 图结构</b><br /><code>&lt;gbc …&gt; # [image] … - [girl] [y1,x1,y2,x2] …</code></td>
+              <td>来自 KohakuGBC：一句整图描述 + 标签 + 每个物体/人物一行（带坐标和单独描述），多人物、多物体时属性最不容易串，位置最准。选它会自动生成画框。</td>
+              <td>只有专门用 GBC 标注训练过的模型认得（如 MOSS-Image-heal）；其他模型会把坐标当成乱码；最长，框要摆得合理。</td>
+              <td>MOSS-Image-heal 等 KohakuGBC 训练的模型。生成后点画框区的「复制 GBC」拿到成品</td></tr>
           </table>
           <h4>怎么选</h4>
           <ul>

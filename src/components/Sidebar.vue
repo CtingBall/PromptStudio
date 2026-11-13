@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { useDragSelect, listSetter } from '../lib/dragSelect'
 import { ref, computed } from 'vue'
-import { doc, addSet, newSet, touch, removeSets, folders, allLabels, promptText } from '../lib/store'
+import { doc, addSet, newSet, touch, removeSets, folders, allLabels, promptText, fmtDate, dateBucket } from '../lib/store'
 import { CATEGORIES, RATING_LABEL, type Category, type PromptSet } from '../lib/types'
 import { imgSrc } from '../lib/imagedb'
 import { aiClassify } from '../lib/ai'
@@ -16,7 +16,8 @@ const rating = ref<'ALL' | 'NONE' | Category>('ALL')
 const folder = ref('')          // '' = all, '__none' = no folder
 const label = ref<string[]>([])
 const favOnly = ref(false)
-const sort = ref<'manual' | 'updated' | 'name'>('manual')
+const sort = ref<'manual' | 'updated' | 'created' | 'oldest' | 'name'>('manual')
+const range = ref<'' | '1' | '7' | '30' | '90'>('')   // only sets created in the last N days
 
 const visible = computed(() => {
   const k = q.value.trim().toLowerCase()
@@ -25,16 +26,27 @@ const visible = computed(() => {
     if (folder.value === '__none' ? s.folder : folder.value && !(s.folder || '').startsWith(folder.value)) return false
     if (label.value.length && !label.value.every((l) => s.labels?.includes(l))) return false
     if (favOnly.value && !s.favorite) return false
+    if (range.value && s.createdAt < Date.now() - Number(range.value) * 86400000) return false
     if (k) {
-      const hay = [s.name, s.folder, ...(s.labels || []), ...s.tags.map((t) => t.en + ' ' + t.zh)].join(' ').toLowerCase()
+      const hay = [s.name, fmtDate(s.createdAt), s.folder, ...(s.labels || []), ...s.tags.map((t) => t.en + ' ' + t.zh)].join(' ').toLowerCase()
       if (!hay.includes(k)) return false
     }
     return true
   })
   if (sort.value === 'updated') list = [...list].sort((a, b) => b.updatedAt - a.updatedAt)
+  if (sort.value === 'created') list = [...list].sort((a, b) => b.createdAt - a.createdAt)
+  if (sort.value === 'oldest') list = [...list].sort((a, b) => a.createdAt - b.createdAt)
   if (sort.value === 'name') list = [...list].sort((a, b) => a.name.localeCompare(b.name, 'zh'))
   return list
 })
+// date headers when sorted by date
+const dateKey = computed(() => (sort.value === 'updated' ? 'updatedAt' : sort.value === 'created' || sort.value === 'oldest' ? 'createdAt' : ''))
+function bucketAt(i: number): string {
+  const k = dateKey.value
+  if (!k) return ''
+  const b = dateBucket(visible.value[i][k])
+  return i === 0 || dateBucket(visible.value[i - 1][k]) !== b ? b : ''
+}
 const count = (c: 'ALL' | 'NONE' | Category) =>
   c === 'ALL' ? doc.sets.length : c === 'NONE' ? doc.sets.filter((s) => !s.category).length : doc.sets.filter((s) => s.category === c).length
 function toggleLabel(l: string) {
@@ -159,8 +171,17 @@ function drop(t: PromptSet) {
         </select>
         <select v-model="sort" style="width: auto" title="排序">
           <option value="manual">手动</option>
-          <option value="updated">最近</option>
+          <option value="updated">最近修改</option>
+          <option value="created">最新创建</option>
+          <option value="oldest">最早创建</option>
           <option value="name">名称</option>
+        </select>
+        <select v-model="range" style="width: auto" title="按创建日期筛选">
+          <option value="">全部日期</option>
+          <option value="1">今天</option>
+          <option value="7">7 天内</option>
+          <option value="30">30 天内</option>
+          <option value="90">90 天内</option>
         </select>
         <button :class="favOnly ? 'primary' : 'ghost'" title="只看收藏" @click="favOnly = !favOnly">★</button>
       </div>
@@ -206,7 +227,9 @@ function drop(t: PromptSet) {
     </div>
 
     <div class="side-list">
-      <div v-for="s in visible" :key="s.id"
+      <template v-for="(s, i) in visible" :key="s.id">
+      <div v-if="bucketAt(i)" class="date-head">{{ bucketAt(i) }}</div>
+      <div
         :class="['set-item', { on: s.id === selected, picked: sel.includes(s.id) }]"
         :draggable="canDrag && !bulk" @click="!bulk && onClick(s)"
         @mousedown="bulk && ds.start($event, s.id, sel.includes(s.id), setSel)" @mouseenter="bulk && ds.over(s.id)" @dragstart="dragId = s.id; $event.dataTransfer?.setData('text/plain', s.id)" @dragend="dragId = ''"
@@ -225,9 +248,11 @@ function drop(t: PromptSet) {
             <span v-if="s.folder" class="muted">📁{{ s.folder }}</span>
             <span class="muted">{{ s.tags.length }}词</span>
             <span v-if="s.shots?.length" class="muted">🖼{{ s.shots.length }}</span>
+            <span class="muted" :title="'创建 ' + fmtDate(s.createdAt, true) + '\n修改 ' + fmtDate(s.updatedAt, true)">{{ fmtDate(s.createdAt).slice(5) }}</span>
           </div>
         </div>
       </div>
+      </template>
       <p v-if="!visible.length" class="muted" style="text-align: center; margin-top: 20px">没有匹配的提示词组</p>
     </div>
   </aside>

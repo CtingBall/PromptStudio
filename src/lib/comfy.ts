@@ -22,6 +22,26 @@ export function regionsToElements(regions: Region[], chars?: Char[]): ComfyEleme
   })
 }
 
+// KohakuGBC "gbc.soft" text (MOSS-Image-heal): header, image caption, tags, one line per box
+// with [y1,x1,y2,x2] in pixels from the canvas centre.
+export function gbcText(s: PromptSet): string {
+  const W = s.canvas?.w || 1024, H = s.canvas?.h || 1024
+  const regs = s.regions || []
+  const cap = s.tags.filter((t) => t.section === 'Caption').map((t) => t.en).join(' ').trim()
+  const tags = s.tags.filter((t) => t.section !== 'Caption').map((t) => t.en).filter(Boolean)
+  const lines = [`<gbc bbox=yxyx space=abs_centralized canvas=${W}x${H}>`, `# [image] ${cap || tags.slice(0, 12).join(', ')}`]
+  if (tags.length) lines.push('tags: ' + tags.join(', '))
+  regs.forEach((r) => {
+    const b = [Math.floor(r.y * H) - (H >> 1), Math.floor(r.x * W) - (W >> 1),
+      Math.ceil((r.y + r.h) * H) - (H >> 1), Math.ceil((r.x + r.w) * W) - (W >> 1)]
+    const c = s.chars?.find((x) => x.id === r.cid)
+    const label = r.kind === 'text' ? 'text' : r.kind === 'char' ? (c?.trigger || c?.name || 'character') : (r.text || 'object').split(/[,.]/)[0].split(/\s+/).slice(0, 3).join(' ')
+    const desc = r.kind === 'text' ? `${boxDesc(r, regs, s.chars)}, text "${r.text || ''}"` : boxDesc(r, regs, s.chars)
+    lines.push(`- [${label}] [${b.join(',')}] ${desc}`.trimEnd())
+  })
+  return lines.join('\n')
+}
+
 // "1, 3" — 1-based numbers of character boxes, as MOSSImageLayoutPrompt.character_boxes expects
 export function characterBoxes(regions: Region[]): string {
   return regions.map((r, i) => (r.kind === 'char' ? i + 1 : 0)).filter(Boolean).join(', ')

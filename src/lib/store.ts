@@ -201,3 +201,5 @@ export function restoreVersion(set: PromptSet, v: SetVersion): void {
   if (v.regions) set.regions = clone(v.regions)
   touch(set)
 }
+
+export { fmtDate, dateBucket } from './date'

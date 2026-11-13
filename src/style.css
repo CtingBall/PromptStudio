@@ -279,3 +279,7 @@ img.brand-logo { display: block; object-fit: cover; padding: 0; background: none
 .manual-body h4 { margin: 18px 0 6px; } .manual-body table { border-collapse: collapse; width: 100%; font-size: .92em; }
 .manual-body td, .manual-body th { border: 1px solid var(--border); padding: 6px 8px; vertical-align: top; text-align: left; }
 .manual-body code { background: var(--panel2); padding: 1px 5px; border-radius: 4px; }
+
+/* v0.3.1 dates */
+.date-head { font-size: 11px; color: var(--muted); padding: 8px 6px 2px; letter-spacing: .05em; }
+.set-date { font-size: 12px; white-space: nowrap; }

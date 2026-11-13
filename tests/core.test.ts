@@ -4,7 +4,8 @@ import assert from 'node:assert/strict'
 import { parseOne, tagsFromPrompt, serializeTags, sanitizeIdentity, groupTags } from '../src/lib/tags.ts'
 import { parseChars, parseLayout, charBoxDesc, textBoxDesc } from '../src/lib/layout.ts'
 import { parseGenMeta } from '../src/lib/pngmeta.ts'
-import { mossJson } from '../src/lib/comfy.ts'
+import { mossJson, gbcText } from '../src/lib/comfy.ts'
+import { fmtDate } from '../src/lib/date.ts'
 
 const noZh = () => ''
 
@@ -79,4 +80,20 @@ test('MOSS JSON uses centered yxyx pixels', () => {
   assert.equal(j.bbox_format, 'yxyx')
   assert.deepEqual(j.items[0].bbox, [-500, -500, 0, 0])
   assert.equal(mossJson(set, 'cap', '<|artist|>x<|/artist|>').split('\n')[0], '<|artist|>x<|/artist|>')
+})
+
+test('GBC soft text', () => {
+  const set: any = { canvas: { w: 1000, h: 1000 }, chars: [{ id: 'A', name: '花火', trigger: 'hanabi' }],
+    tags: [{ en: 'A girl waves.', zh: '', weight: 1, section: 'Caption' }, { en: '1girl', zh: '', weight: 1, section: 'Subject & Shot' }],
+    regions: [{ id: 'r', x: 0, y: 0, w: 0.5, h: 1, text: 'waving', kind: 'char', cid: 'A' }] }
+  const t = gbcText(set).split('\n')
+  assert.equal(t[0], '<gbc bbox=yxyx space=abs_centralized canvas=1000x1000>')
+  assert.equal(t[1], '# [image] A girl waves.')
+  assert.equal(t[2], 'tags: 1girl')
+  assert.equal(t[3], '- [hanabi] [-500,-500,500,0] hanabi, waving')
+})
+
+test('fmtDate', () => {
+  assert.equal(fmtDate(new Date(2026, 10, 3, 9, 5).getTime()), '2026-11-03')
+  assert.equal(fmtDate(new Date(2026, 10, 3, 9, 5).getTime(), true), '2026-11-03 09:05')
 })

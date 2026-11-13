@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { FORMAT_LABEL } from '../lib/types'
-const FORMAT_TIP = { tags: 'SD / NovelAI / Illustrious / Anima', natural: 'MOSS / Flux / Qwen-Image 等', mixed: '两类模型都想兼顾时' } as const
+const FORMAT_TIP = { tags: 'SD / NovelAI / Illustrious / Anima', natural: 'MOSS / Flux / Qwen-Image 等', mixed: '两类模型都想兼顾时', gbc: 'MOSS-Image-heal 等 KohakuGBC 训练的模型，会自动带画框' } as const
 import { ref, reactive, computed } from 'vue'
 import { generateSet, type GenSection, type GenMode } from '../lib/translate'
 import { doc, settings } from '../lib/store'
@@ -78,7 +78,7 @@ function resetInject() {
   doc.settings.banIdentity = true
 }
 
-const useAuto = computed(() => autoLayout.value && mode.value !== 'layout')
+const useAuto = computed(() => (autoLayout.value || doc.settings.genFormat === 'gbc') && mode.value !== 'layout')
 const mainText = computed(() => (mode.value === 'theme' ? theme.value : mode.value === 'rewrite' ? raw.value : scene.value).trim())
 const canRun = computed(() => {
   if (busy.value) return false
@@ -104,6 +104,7 @@ async function run() {
       grid: autoGrid.value,
       chars: chars.value,
     }, { temperature: temp.value, rules: s.genRules, banIdentity: s.banIdentity, format: s.genFormat })
+    if (r.caption) r.sections.unshift({ name: 'Caption', tags: [r.caption] })
     if (!r.sections.length) throw new Error('模型没有返回可用的标签，请重试或换个模型')
     removed.value = r.removed
     const neg = [...s.genNegative.split(',').map((t) => t.trim()).filter(Boolean), ...r.negative]

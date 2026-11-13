@@ -18,7 +18,7 @@ import {
 import { translateTags } from './lib/translate'
 import { chat } from './lib/grok'
 import { tagsFromPrompt, groupTags } from './lib/tags'
-import { lookup, snapshot } from './lib/store'
+import { lookup, snapshot, fmtDate } from './lib/store'
 import HistoryDialog from './components/HistoryDialog.vue'
 import ManualDialog from './components/ManualDialog.vue'
 import { AI_TASKS, type AiTask } from './lib/types'
@@ -26,7 +26,7 @@ import type { PromptSet, Tag, Region, Char } from './lib/types'
 import { CATEGORIES, RATING_LABEL } from './lib/types'
 import LayoutPanel from './components/LayoutPanel.vue'
 import { checkLayout } from './lib/layout'
-import { elementsJson, mossJson, injectWorkflow, loadTemplate, saveTemplate, download } from './lib/comfy'
+import { elementsJson, gbcText, mossJson, injectWorkflow, loadTemplate, saveTemplate, download } from './lib/comfy'
 import type { GenMode } from './lib/translate'
 import type { GenSection } from './lib/translate'
 
@@ -435,6 +435,16 @@ async function copyBboxes() {
 
 // ---- ComfyUI (official CreateBoundingBoxes + MOSSImageLayoutPrompt) ----
 const comfyTpl = ref(loadTemplate())
+async function copyGbc() {
+  const s = current.value
+  if (!s) return
+  try {
+    await navigator.clipboard.writeText(gbcText(s))
+    flash('已复制 GBC 格式：直接粘进正向提示词（MOSS-Image-heal 等）')
+  } catch (e: any) {
+    flash('复制失败：' + (e?.message || e))
+  }
+}
 async function copyMoss() {
   const s = current.value
   if (!s) return
@@ -584,6 +594,7 @@ function clampMaxImages() {
           <button class="ghost" :style="{ color: current.favorite ? 'var(--star)' : '' }" title="收藏"
             @click="current.favorite = !current.favorite; touch(current!)">{{ current.favorite ? '★' : '☆' }}</button>
           <input v-model="current.name" class="title-input" @change="touch(current!)" />
+          <span class="muted set-date" :title="'创建 ' + fmtDate(current.createdAt, true) + '\n修改 ' + fmtDate(current.updatedAt, true)">📅 {{ fmtDate(current.createdAt) }}</span>
           <select v-model="current.category" :class="current.category ? 'r-' + current.category : ''" style="width: auto" @change="touch(current!)">
             <option :value="undefined">未分级</option>
             <option v-for="c in CATEGORIES" :key="c" :value="c">{{ RATING_LABEL[c] }}</option>
@@ -683,6 +694,7 @@ function clampMaxImages() {
             <span class="spacer" />
             <button @click="copyBboxes">复制框坐标 JSON</button>
             <button title="完整布局 JSON（含总描述和首行触发），直接当正向提示词用，不需要画框节点" @click="copyMoss">复制 MOSS JSON</button>
+            <button title="KohakuGBC 的 gbc.soft 文本：总描述 + 标签 + 每个框一行，直接当正向提示词用" @click="copyGbc">复制 GBC</button>
             <button title="粘贴到 ComfyUI 一个文本节点，接到 Create Bounding Boxes 的 bboxes 输入" @click="copyComfy">复制给 ComfyUI</button>
             <button class="primary" :title="comfyTpl ? '模板：' + comfyTpl.name : '首次需选择你的 MOSS 画框工作流 .json'" @click="exportComfy()">导出 ComfyUI 工作流</button>
             <button v-if="comfyTpl" class="ghost" title="更换模板工作流" @click="exportComfy(true)">换模板</button>

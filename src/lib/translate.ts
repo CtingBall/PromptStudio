@@ -72,6 +72,7 @@ const FORMAT_RULE: Record<PromptFormat, string> = {
   tags: `写法：每段是一组逗号分隔的英文标签/短语（Danbooru 标签为主，必要时加描述短语）。`,
   natural: `写法：自然语言。每段的 tags 数组里放 1–3 句完整、流畅的英文句子，像在向画师描述这张图，不写标签堆砌。
 适合以大语言模型做文本编码器的模型（如 MOSS、Flux、Qwen-Image）。`,
+  gbc: `写法：GBC（KohakuGBC 图结构标注）。每段只写英文标签/短语（不写句子）；另在 JSON 顶层加 "caption": 2–4 句完整英文句子描述整张图（构图、人物在做什么、场景、氛围）。画框布局必须给出，每个框是图里一个独立物体/人物/文字，desc 写成一句完整英文描述（这个框里看得见的内容）。`,
   mixed: `写法：标签 + 自然语言。每段先写若干英文标签，最后再加 1 句完整英文句子把这段内容串起来（句子作为数组最后一项）。`,
 }
 const NATURAL_EXAMPLE = `【Subject & Shot】
@@ -102,7 +103,7 @@ export function buildGenSystem(rules: string, banIdentity: boolean, format: Prom
     {"name": "Style & FX", "tags": []}
   ],
   "negative": [],
-  "name": "20字以内中文画面概括"
+  "name": "20字以内中文画面概括"${format === 'gbc' ? ',\n  "caption": "整图英文描述"' : ''}
 }
 sections 固定这 ${GEN_SECTIONS.length} 段、这个顺序：${GEN_SECTIONS.join(' / ')}。
 - Subject & Shot：人数、镜头角度、取景范围、构图、一句总体画面。
@@ -139,6 +140,7 @@ export interface GenResult {
   removed: string[] // tags dropped/changed by the identity filter, for display
   regions: Array<{ id: string; tags: string[] }> // per-box tags (layout mode)
   boxes: LayoutBox[] // AI-designed / refined layout
+  caption: string // whole-image description (GBC format)
 }
 
 export type GenMode = 'theme' | 'rewrite' | 'layout'
@@ -261,5 +263,6 @@ export function parseGen(reply: string, banIdentity: boolean): GenResult {
   }))
   const name = String(obj?.name || '').trim().replace(/\s+/g, ' ').slice(0, 20)
   const boxes = parseLayout(obj?.layout)
-  return { name, sections, negative, removed, regions, boxes }
+  const caption = String(obj?.caption || '').trim().slice(0, 1500)
+  return { name, sections, negative, removed, regions, boxes, caption }
 }
