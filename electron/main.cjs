@@ -51,7 +51,7 @@ let win = null
 function createWindow() {
   win = new BrowserWindow({
     width: 1440, height: 920, minWidth: 960, minHeight: 600,
-    show: false, backgroundColor: '#1b1d22', title: 'PromptStudio',
+    show: false, backgroundColor: '#1b1d22', title: '千夏绘卷',
     icon: path.join(__dirname, '..', 'build', 'icon.png'),
     webPreferences: { contextIsolation: true, sandbox: true },
   })
@@ -75,7 +75,7 @@ function setupUpdater() {
   autoUpdater.on('update-downloaded', async (info) => {
     const r = await dialog.showMessageBox(win, {
       type: 'info', title: '发现新版本', buttons: ['立即重启更新', '稍后（退出时自动更新）'], defaultId: 0, cancelId: 1,
-      message: `PromptStudio ${info.version} 已下载好`, detail: '重启后完成更新，你的提示词和图片都不会丢失。',
+      message: `千夏绘卷 ${info.version} 已下载好`, detail: '重启后完成更新，你的提示词和图片都不会丢失。',
     })
     if (r.response === 0) autoUpdater.quitAndInstall()
   })

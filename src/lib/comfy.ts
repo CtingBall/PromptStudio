@@ -190,7 +190,7 @@ export function injectWorkflow(template: string, s: PromptSet, prompt: string): 
     const pos = Array.isArray(cbb.pos) ? [cbb.pos[0] - 420, cbb.pos[1]] : [0, 0]
     gr.nodes.push({
       id: ids.node, type: 'PrimitiveStringMultiline', pos, size: [380, 220], flags: {}, order: 0, mode: 0,
-      title: 'PromptStudio 画框',
+      title: '千夏绘卷 画框',
       inputs: [{ name: 'value', type: 'STRING', widget: { name: 'value' }, link: null }],
       outputs: [{ name: 'STRING', type: 'STRING', links: [ids.link] }],
       properties: { 'Node name for S&R': 'PrimitiveStringMultiline' },
@@ -200,7 +200,7 @@ export function injectWorkflow(template: string, s: PromptSet, prompt: string): 
     else gr.links.push({ id: ids.link, origin_id: ids.node, origin_slot: 0, target_id: cbb.id, target_slot: bSlot, type: 'STRING' })
     bIn.link = ids.link
     bumpIds(wf, ids.node, ids.link)
-    log.push('已添加「PromptStudio 画框」文本节点并接到 bboxes')
+    log.push('已添加「千夏绘卷 画框」文本节点并接到 bboxes')
   } else log.push('画框节点缺少 bboxes 输入，只写入了画布框（请更新 ComfyUI）')
   log.push(`写入 ${els.length} 个框`)
 

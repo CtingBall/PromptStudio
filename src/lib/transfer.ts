@@ -96,7 +96,7 @@ function normalize(data: any): Bundle {
   if (Array.isArray(data)) return { sets: data, images: {}, dict: {} }
   if (data && Array.isArray(data.sets)) return { sets: data.sets, images: data.images || {}, dict: data.dict || {} }
   if (data && Array.isArray(data.tags)) return { sets: [data], images: {}, dict: {} }
-  throw new Error('不是 Prompt Studio 的导出文件')
+  throw new Error('不是千夏绘卷的导出文件')
 }
 
 /** Parse dropped/picked files: .json exports, .txt prompts, or images with generation metadata. */

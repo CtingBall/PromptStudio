@@ -2,15 +2,16 @@
 // layout changes never touch prompt sets.
 import { reactive, watch } from 'vue'
 
-export type Theme = 'dark' | 'light' | 'warm'
+export type Theme = 'sakura' | 'dark' | 'light' | 'warm'
 export const THEMES: Array<{ id: Theme; label: string }> = [
+  { id: 'sakura', label: '樱夜' },
   { id: 'dark', label: '暗色' },
   { id: 'light', label: '亮色' },
   { id: 'warm', label: '暖色' },
 ]
 
 const KEY = 'prompt-studio-ui'
-const DEF = { theme: 'dark' as Theme, scale: 100, sideW: 280, asideW: 360, asideOpen: true, compact: false, tagsOpen: true, labelsOpen: false, closedSecs: [] as string[] }
+const DEF = { theme: 'sakura' as Theme, scale: 100, sideW: 280, asideW: 360, asideOpen: true, compact: false, tagsOpen: true, labelsOpen: false, closedSecs: [] as string[] }
 
 function load() {
   try { return { ...DEF, ...JSON.parse(localStorage.getItem(KEY) || '{}') } } catch { return { ...DEF } }

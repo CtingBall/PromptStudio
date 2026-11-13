@@ -28,7 +28,7 @@ export async function autoBackupOnUpdate(): Promise<string> {
   if (IS_DESKTOP) {
     // installer updates keep the data folder; no download dialog needed
     try { localStorage.setItem(KEY, APP_VERSION) } catch {}
-    return seen ? `已更新到 ${APP_VERSION}` : '欢迎使用 PromptStudio 桌面版。用过网页版的话：在网页版设置里「备份全部数据」，再在这里点「导入」。'
+    return seen ? `已更新到 ${APP_VERSION}` : '欢迎使用千夏绘卷桌面版。用过网页版的话：在网页版设置里「备份全部数据」，再在这里点「导入」。'
   }
   let msg = ''
   try {

@@ -7,6 +7,15 @@
   --c-safe: #4ade80; --c-sfw: #fbbf24; --c-nsfw: #f87171; --star: #fbbf24;
   color-scheme: dark;
 }
+[data-theme='sakura'] {
+  --bg: #15121c; --panel: #1d1926; --panel2: #262033; --border: #342b45; --border2: #4a3d60;
+  --text: #f1ecf7; --muted: #a99fbb; --accent: #ff8fb8; --accent2: #9fd3ff; --danger: #ff6b81;
+  --chip: #282236; --chip-hover: #322a44; --on-accent: #2a0d1a; --accent-soft: rgba(255,143,184,.14);
+  --canvas: #120f19; --grid-line: rgba(255,200,230,.07); --shadow: 0 8px 28px rgba(10,0,20,.45);
+  --c-safe: #7ee0a8; --c-sfw: #ffd36e; --c-nsfw: #ff7d93; --star: #ffd36e;
+  --grad: linear-gradient(135deg, #ff8fb8, #b79bff 55%, #8ec8ff);
+  color-scheme: dark;
+}
 [data-theme='light'] {
   --bg: #f3f4f7; --panel: #ffffff; --panel2: #f0f2f6; --border: #dde1e8; --border2: #c5cbd6;
   --text: #1d2330; --muted: #6a7384; --accent: #2f6fdb; --accent2: #12854a; --danger: #d63c3c;
@@ -23,7 +32,8 @@
   --c-safe: #9bd67a; --c-sfw: #f2c14e; --c-nsfw: #ff8a7a; --star: #f2c14e;
   color-scheme: dark;
 }
-:root { font-family: system-ui, "Segoe UI", "Microsoft YaHei", sans-serif; --side-w: 280px; --aside-w: 360px; }
+:root { --grad: linear-gradient(135deg, var(--accent), var(--accent2)); --radius: 10px;
+  font-family: system-ui, "Segoe UI", "Microsoft YaHei", sans-serif; --side-w: 280px; --aside-w: 360px; }
 
 /* ---- base ---- */
 * { box-sizing: border-box; }
@@ -215,3 +225,37 @@ html.compact .chip-grid { gap: 4px; }
 .share-label { margin-top: 6px; font-size: .78em; color: var(--muted); }
 .share-text { margin: 2px 0 0; white-space: pre-wrap; word-break: break-word; font-family: inherit; font-size: .86em;
   max-height: 20vh; overflow: auto; }
+
+/* ---- v0.2 polish ---- */
+body { background: radial-gradient(1200px 600px at 100% -10%, var(--accent-soft), transparent 60%), var(--bg); }
+.topbar { position: sticky; top: 0; z-index: 20; padding: 9px 16px; gap: 10px;
+  background: color-mix(in srgb, var(--panel) 88%, transparent); backdrop-filter: blur(10px);
+  box-shadow: 0 1px 0 var(--border), 0 6px 18px rgba(0,0,0,.12); border-bottom: none; }
+.brand { display: inline-flex; align-items: center; gap: 8px; font-size: 1.12em; letter-spacing: 1px; }
+.brand em { font-style: normal; font-weight: 500; font-size: .66em; letter-spacing: .5px; color: var(--muted); }
+.brand-logo { width: 28px; height: 28px; border-radius: 8px; display: inline-grid; place-items: center;
+  background: var(--grad); color: #fff; font-size: .82em; font-weight: 800; box-shadow: 0 2px 10px var(--accent-soft); }
+button { border-radius: 8px; transition: border-color .12s, background .12s, transform .08s, box-shadow .12s; }
+button:active:not(:disabled) { transform: translateY(1px); }
+button.primary { background: var(--grad); border-color: transparent; box-shadow: 0 2px 12px var(--accent-soft); }
+button.primary:hover { filter: brightness(1.06); box-shadow: 0 4px 16px var(--accent-soft); }
+input, textarea, select { border-radius: 8px; transition: border-color .12s, box-shadow .12s; }
+input:focus, textarea:focus, select:focus { box-shadow: 0 0 0 3px var(--accent-soft); }
+.btn-group { border-radius: 9px; }
+.section, .card { border-radius: 14px; box-shadow: 0 1px 0 rgba(255,255,255,.02), 0 4px 14px rgba(0,0,0,.08); }
+.section-head h4 { display: inline-flex; align-items: center; gap: 6px; }
+.section-head h4::before { content: ''; width: 4px; height: 1em; border-radius: 2px; background: var(--grad); }
+.tag-chip { border-radius: 10px; }
+.tag-chip:hover { box-shadow: 0 3px 10px rgba(0,0,0,.15); }
+.modal-mask { background: rgba(8,4,14,.55); backdrop-filter: blur(4px); animation: fadeIn .15s ease; }
+.modal { border-radius: 16px; animation: popIn .18s ease; }
+.toast { border-radius: 999px; border-color: transparent; background: var(--panel2);
+  box-shadow: 0 0 0 1px var(--accent), var(--shadow); animation: toastIn .18s ease; }
+@keyframes fadeIn { from { opacity: 0 } }
+@keyframes popIn { from { opacity: 0; transform: translateY(6px) scale(.98) } }
+@keyframes toastIn { from { opacity: 0; transform: translate(-50%, 8px) } }
+::-webkit-scrollbar-thumb { background: var(--border2); border: 2px solid transparent; background-clip: padding-box; border-radius: 6px; }
+::selection { background: var(--accent-soft); }
+.xfer-list { user-select: none; }
+.xfer-item { transition: background .08s; }
+.xfer-item.picked { background: var(--accent-soft); box-shadow: inset 3px 0 0 var(--accent); }

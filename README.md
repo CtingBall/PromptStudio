@@ -1,10 +1,10 @@
-# PromptStudio
+# 千夏绘卷 Chinatsu Scroll
 
 提示词管理 / 逐词翻译 / AI 一键生成 / 返图管理 / ComfyUI MOSS-Image 画框布局。
 
 ## 安装（普通用户）
 
-1. 打开 [Releases](https://github.com/CtingBall/PromptStudio/releases/latest)，下载 `PromptStudio-Setup-x.y.z.exe`。
+1. 打开 [Releases](https://github.com/CtingBall/PromptStudio/releases/latest)，下载 `ChinatsuScroll-Setup-x.y.z.exe`。
 2. 双击安装。Windows 提示「已保护你的电脑」时，点「更多信息 → 仍要运行」（安装包没有付费签名）。
 3. 打开后在 ⚙️ 设置里填 AI 的 API 地址和 Key。
 

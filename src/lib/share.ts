@@ -63,7 +63,7 @@ const str = (v: unknown, max = 2000) => (typeof v === 'string' ? v.slice(0, max)
 const num01 = (v: unknown) => { const n = Number(v); return Number.isFinite(n) ? Math.min(1, Math.max(0, n)) : 0 }
 
 function toSets(obj: any): PromptSet[] {
-  if (!obj || obj.app !== 'prompt-studio' || !Array.isArray(obj.sets)) throw new Error('不是 Prompt Studio 的分享内容')
+  if (!obj || obj.app !== 'prompt-studio' || !Array.isArray(obj.sets)) throw new Error('不是千夏绘卷的分享内容')
   const now = Date.now()
   return obj.sets.slice(0, 500).map((s: any): PromptSet => {
     const tags: Tag[] = (Array.isArray(s?.tags) ? s.tags : []).slice(0, 1000).map((t: any) => {
@@ -136,7 +136,7 @@ export async function publishGist(sets: PromptSet[], desc: string, o?: ShareOpts
   const r = await fetch('https://api.github.com/gists', {
     method: 'POST',
     headers: { Accept: 'application/vnd.github+json', Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ description: desc || 'Prompt Studio 分享', public: false, files: { [GIST_FILE]: { content: packJson(sets, o) } } }),
+    body: JSON.stringify({ description: desc || '千夏绘卷 分享', public: false, files: { [GIST_FILE]: { content: packJson(sets, o) } } }),
   })
   if (r.status === 401) throw new Error('Token 无效或已过期')
   if (!r.ok) throw new Error(`发布失败（${r.status}）`)

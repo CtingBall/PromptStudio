@@ -515,7 +515,7 @@ function clampMaxImages() {
 <template>
   <div class="app">
     <header class="topbar">
-      <span class="brand">Prompt Studio<small>V{{ APP_VERSION }}</small></span>
+      <span class="brand"><span class="brand-logo">卷</span>千夏绘卷<em>Chinatsu Scroll</em><small>V{{ APP_VERSION }}</small></span>
       <span class="spacer" />
       <span v-if="busyMsg" class="muted">{{ busyMsg }}</span>
       <button class="primary" @click="openGen('theme')">✨ 一键生成</button>

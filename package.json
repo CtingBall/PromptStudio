@@ -1,6 +1,6 @@
 {
   "name": "prompt-studio",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -24,7 +24,7 @@
     "vue": "^3.5.13",
     "vue-tsc": "^2.2.0"
   },
-  "description": "提示词管理 / 翻译 / AI 生成 / ComfyUI 画框布局",
+  "description": "千夏绘卷 Chinatsu Scroll — 提示词管理 / 翻译 / AI 生成 / ComfyUI 画框布局",
   "author": "水千夏",
   "main": "electron/main.cjs",
   "build": {
@@ -43,7 +43,7 @@
     "win": {
       "target": "nsis",
       "icon": "build/icon.png",
-      "artifactName": "PromptStudio-Setup-${version}.${ext}"
+      "artifactName": "ChinatsuScroll-Setup-${version}.${ext}"
     },
     "nsis": {
       "oneClick": false,
@@ -51,8 +51,9 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "PromptStudio",
-      "deleteAppDataOnUninstall": false
+      "shortcutName": "千夏绘卷",
+      "deleteAppDataOnUninstall": false,
+      "uninstallDisplayName": "千夏绘卷 Chinatsu Scroll"
     },
     "publish": [
       {

@@ -29,7 +29,7 @@ onBeforeUnmount(() => { window.removeEventListener('keydown', onKey); window.rem
   <div v-if="open" class="modal-mask" style="z-index: 90" @click.self="open = false">
     <div class="modal credits">
       <div class="credits-glow">✦</div>
-      <h2 style="margin: 4px 0">Prompt Studio</h2>
+      <h2 style="margin: 4px 0">千夏绘卷 · Chinatsu Scroll</h2>
       <p class="muted" style="margin: 0 0 14px">你发现了隐藏菜单</p>
       <div class="muted" style="font-size: .86em">作者</div>
       <div class="credits-name">{{ who }}</div>

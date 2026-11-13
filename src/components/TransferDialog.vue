@@ -22,7 +22,22 @@ const shown = computed(() => {
   return doc.sets.filter((s) => (rating.value === 'ALL' || s.category === rating.value)
     && (!k || [s.name, s.folder, ...(s.labels || [])].join(' ').toLowerCase().includes(k)))
 })
-const toggle = (id: string) => (sel.value = sel.value.includes(id) ? sel.value.filter((x) => x !== id) : [...sel.value, id])
+// press and drag down the list to tick / untick many rows at once
+const drag = ref<null | { on: boolean; apply: (k: string, on: boolean) => void }>(null)
+function dragStart(e: MouseEvent, key: string, cur: boolean, apply: (k: string, on: boolean) => void) {
+  if (e.button !== 0) return
+  e.preventDefault()
+  drag.value = { on: !cur, apply }
+  apply(key, !cur)
+  window.addEventListener('mouseup', () => (drag.value = null), { once: true })
+}
+function dragOver(key: string) { drag.value?.apply(key, drag.value.on) }
+const setSel = (id: string, on: boolean) => {
+  const has = sel.value.includes(id)
+  if (on && !has) sel.value = [...sel.value, id]
+  else if (!on && has) sel.value = sel.value.filter((x) => x !== id)
+}
+const setPick = (i: string, on: boolean) => { const c = cands.value[+i]; if (c) c.pick = on }
 function pickShown(on: boolean) {
   const ids = shown.value.map((s) => s.id)
   sel.value = on ? [...new Set([...sel.value, ...ids])] : sel.value.filter((x) => !ids.includes(x))
@@ -101,10 +116,12 @@ async function doImport() {
           </select>
           <button class="ghost sm" @click="pickShown(true)">全选列表</button>
           <button class="ghost sm" @click="pickShown(false)">取消列表</button>
+          <span class="muted" style="font-size: .82em">按住左键上下拖动可连选</span>
         </div>
         <div class="xfer-list">
-          <label v-for="s in shown" :key="s.id" :class="['xfer-item', { picked: sel.includes(s.id) }]">
-            <input type="checkbox" :checked="sel.includes(s.id)" style="width: auto" @change="toggle(s.id)" />
+          <label v-for="s in shown" :key="s.id" :class="['xfer-item', { picked: sel.includes(s.id) }]"
+            @mousedown="dragStart($event, s.id, sel.includes(s.id), setSel)" @mouseenter="dragOver(s.id)" @click.prevent>
+            <input type="checkbox" :checked="sel.includes(s.id)" style="width: auto; pointer-events: none" tabindex="-1" />
             <div class="thumb"><img v-if="s.shots?.length && imgSrc(s.shots[0].id)" :src="imgSrc(s.shots[0].id)" /><span v-else>{{ s.name.slice(0, 1) }}</span></div>
             <div style="flex: 1; min-width: 0">
               <div class="set-name">{{ s.name }}</div>
@@ -157,8 +174,9 @@ async function doImport() {
             <button class="ghost sm" @click="cands = []; errors = []">清空</button>
           </div>
           <div class="xfer-list">
-            <label v-for="(c, i) in cands" :key="i" :class="['xfer-item', { picked: c.pick }]">
-              <input v-model="c.pick" type="checkbox" style="width: auto" />
+            <label v-for="(c, i) in cands" :key="i" :class="['xfer-item', { picked: c.pick }]"
+              @mousedown="dragStart($event, String(i), c.pick, setPick)" @mouseenter="dragOver(String(i))" @click.prevent>
+              <input :checked="c.pick" type="checkbox" style="width: auto; pointer-events: none" tabindex="-1" />
               <div class="thumb"><img v-if="candSrc(c)" :src="candSrc(c)" /><span v-else>{{ c.set.name.slice(0, 1) }}</span></div>
               <div style="flex: 1; min-width: 0">
                 <div class="set-name">{{ c.set.name }}</div>
