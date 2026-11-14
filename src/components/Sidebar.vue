@@ -24,7 +24,10 @@ const visible = computed(() => {
   let list = doc.sets.filter((s) => {
     if (rating.value === 'NONE' ? s.category : rating.value !== 'ALL' && s.category !== rating.value) return false
     // searching looks inside the current folder and all its subfolders; browsing shows only this level
-    if (k || rating.value !== 'ALL' || label.value.length || favOnly.value || range.value) {
+    if (!ui.explorer) {
+      // classic view: folder dropdown filters, '' = all, '__none' = no folder
+      if (folder.value === '__none' ? s.folder : folder.value && !(s.folder === folder.value || (s.folder || '').startsWith(folder.value + '/'))) return false
+    } else if (k || rating.value !== 'ALL' || label.value.length || favOnly.value || range.value) {
       if (folder.value && !(s.folder === folder.value || (s.folder || '').startsWith(folder.value + '/'))) return false
     } else if ((s.folder || '') !== folder.value) return false
     if (label.value.length && !label.value.every((l) => s.labels?.includes(l))) return false
@@ -69,7 +72,7 @@ function create() {
   favOnly.value = false
   const s = addSet()
   if (rating.value !== 'ALL' && rating.value !== 'NONE') s.category = rating.value
-  if (folder.value) s.folder = folder.value
+  if (folder.value && folder.value !== '__none') s.folder = folder.value
   emit('update:selected', s.id)
 }
 
@@ -85,7 +88,7 @@ function bulkRating(c: string) {
   for (const s of selSets()) { s.category = c === 'NONE' ? undefined : (c as Category); touch(s) }
 }
 function bulkFolder() {
-  const f = prompt('移动到文件夹（用 / 分级，留空 = 移到根目录）', folder.value)
+  const f = prompt('移动到文件夹（用 / 分级，留空 = 移到根目录）', folder.value === '__none' ? '' : folder.value)
   if (f === null) return
   for (const s of selSets()) { s.folder = f.trim() || undefined; touch(s) }
 }
@@ -163,8 +166,9 @@ const subFolders = computed(() => {
       return { path, name: path.slice(pre.length), count: inside.length, cover }
     })
 })
-const browsing = computed(() => !q.value.trim() && rating.value === 'ALL' && !label.value.length && !favOnly.value && !range.value)
+const browsing = computed(() => ui.explorer && !q.value.trim() && rating.value === 'ALL' && !label.value.length && !favOnly.value && !range.value)
 function openFolder(p: string) { folder.value = p; sel.value = [] }
+function toggleView() { ui.explorer = !ui.explorer; folder.value = '' }
 function upFolder() { openFolder(folder.value.includes('/') ? folder.value.slice(0, folder.value.lastIndexOf('/')) : '') }
 function newFolder() {
   const n = prompt('新建文件夹名称（可用 / 一次建多级）')
@@ -221,6 +225,12 @@ function drop(t: PromptSet) {
       </div>
 
       <div class="row" style="margin-top: 8px; gap: 6px">
+        <select v-if="!ui.explorer" v-model="folder" style="flex: 1; min-width: 0">
+          <option value="">📁 全部文件夹</option>
+          <option value="__none">（无文件夹）</option>
+          <option v-for="f in folders" :key="f" :value="f">{{ f }}</option>
+        </select>
+        <button class="ghost" :title="ui.explorer ? '切换到经典列表（文件夹下拉筛选）' : '切换到资源管理器式文件夹'" @click="toggleView">{{ ui.explorer ? '🗂' : '≣' }}</button>
         <select v-model="sort" style="flex: 1; min-width: 0" title="排序">
           <option value="manual">手动</option>
           <option value="updated">最近修改</option>
@@ -283,7 +293,7 @@ function drop(t: PromptSet) {
       <input v-model.number="ui.cardSize" type="range" min="0" max="100" step="1" title="调整列表大小：越小越紧凑，越大图越清晰" />
       <span title="放大：大图卡片">▦</span>
     </div>
-    <div class="crumbs" @click="fmenu = null">
+    <div v-if="ui.explorer" class="crumbs" @click="fmenu = null">
       <button class="ghost sm" :disabled="!folder" title="上一级" @click="upFolder">↑</button>
       <span :class="['crumb', { hover: fHover === '/' }]" @click="openFolder('')"
         @dragover.prevent="fHover = '/'" @dragleave="fHover = ''" @drop.prevent="dropOnFolder('')">🏠 全部</span>
