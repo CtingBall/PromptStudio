@@ -11,7 +11,7 @@ export const THEMES: Array<{ id: Theme; label: string }> = [
 ]
 
 const KEY = 'prompt-studio-ui'
-const DEF = { theme: 'sakura' as Theme, scale: 100, sideW: 280, asideW: 360, asideOpen: true, compact: false, tagsOpen: true, labelsOpen: false, closedSecs: [] as string[] }
+const DEF = { theme: 'sakura' as Theme, scale: 100, sideW: 280, asideW: 360, asideOpen: true, compact: false, tagsOpen: true, labelsOpen: false, cardSize: 35, closedSecs: [] as string[] }
 
 function load() {
   try { return { ...DEF, ...JSON.parse(localStorage.getItem(KEY) || '{}') } } catch { return { ...DEF } }

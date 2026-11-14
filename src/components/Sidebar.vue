@@ -47,6 +47,12 @@ function bucketAt(i: number): string {
   const b = dateBucket(visible.value[i][k])
   return i === 0 || dateBucket(visible.value[i - 1][k]) !== b ? b : ''
 }
+// list density: 0–24 text only, 25–54 thumbnail rows, 55–100 stacked image cards (≥85: image only)
+const mode = computed(() => (ui.cardSize < 25 ? 'mode-list' : ui.cardSize < 55 ? 'mode-row' : 'mode-card'))
+const listStyle = computed(() => ({
+  '--thumb': Math.round(28 + (Math.min(ui.cardSize, 54) - 25) * 1.6) + 'px',
+  '--card-w': Math.round(90 + (ui.cardSize - 55) * 4.4) + 'px',
+}))
 const count = (c: 'ALL' | 'NONE' | Category) =>
   c === 'ALL' ? doc.sets.length : c === 'NONE' ? doc.sets.filter((s) => !s.category).length : doc.sets.filter((s) => s.category === c).length
 function toggleLabel(l: string) {
@@ -226,7 +232,12 @@ function drop(t: PromptSet) {
       </div>
     </div>
 
-    <div class="side-list">
+    <div class="row density">
+      <span title="缩小：只显示文字">≡</span>
+      <input v-model.number="ui.cardSize" type="range" min="0" max="100" step="1" title="调整列表大小：越小越紧凑，越大图越清晰" />
+      <span title="放大：大图卡片">▦</span>
+    </div>
+    <div :class="['side-list', mode, { 'img-only': ui.cardSize >= 85 }]" :style="listStyle">
       <template v-for="(s, i) in visible" :key="s.id">
       <div v-if="bucketAt(i)" class="date-head">{{ bucketAt(i) }}</div>
       <div
@@ -235,12 +246,12 @@ function drop(t: PromptSet) {
         @mousedown="bulk && ds.start($event, s.id, sel.includes(s.id), setSel)" @mouseenter="bulk && ds.over(s.id)" @dragstart="dragId = s.id; $event.dataTransfer?.setData('text/plain', s.id)" @dragend="dragId = ''"
         @dragover.prevent @drop.prevent="drop(s)">
         <input v-if="bulk" type="checkbox" :checked="sel.includes(s.id)" style="width: auto; pointer-events: none" tabindex="-1" />
-        <div class="thumb">
+        <div v-if="mode !== 'mode-list'" :class="['thumb', { multi: (s.shots?.length || 0) > 1, many: (s.shots?.length || 0) > 2 }]">
           <img v-if="s.shots?.length && imgSrc(s.shots[0].id)" :src="imgSrc(s.shots[0].id)" />
           <span v-else>{{ s.name.slice(0, 1) }}</span>
         </div>
-        <div style="flex: 1; min-width: 0">
-          <div class="set-name">
+        <div class="set-text">
+          <div class="set-name" :title="s.name">
             <span v-if="s.favorite" style="color: var(--star)">★</span>{{ s.name }}
           </div>
           <div class="set-sub">

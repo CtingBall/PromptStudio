@@ -89,10 +89,10 @@ async function manualBackup() {
 const showOut = ref(false)
 const showShare = ref(false)
 function startSide(e: PointerEvent) {
-  dragSplit(e, () => ui.sideW, (v) => (ui.sideW = clampW(v, 200, 520)), 1)
+  dragSplit(e, () => ui.sideW, (v) => (ui.sideW = clampW(v, 180, Math.max(520, window.innerWidth - 640))), 1)
 }
 function startAside(e: PointerEvent) {
-  dragSplit(e, () => ui.asideW, (v) => (ui.asideW = clampW(v, 260, 760)), -1)
+  dragSplit(e, () => ui.asideW, (v) => (ui.asideW = clampW(v, 240, Math.max(760, window.innerWidth - 700))), -1)
 }
 const secKey = (s?: string) => s || '__none'
 const secClosed = (s?: string) => ui.closedSecs.includes(secKey(s))

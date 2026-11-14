@@ -3,7 +3,7 @@
 // Settings (API address / key) are never written or read.
 import type { PromptSet, Tag } from './types'
 import { doc, newSet, lookup, removeSets } from './store'
-import { uid, tagsFromPrompt } from './tags'
+import { uid, tagsFromPrompt, promptKey } from './tags'
 import { getImage, putImage } from './imagedb'
 import { fileToDataUrl } from './image'
 import { readPngText, parseGenMeta } from './pngmeta'
@@ -69,6 +69,7 @@ export interface Candidate {
   images: Record<string, string>
   source: string
   conflict: boolean   // same id already exists (or earlier in this batch)
+  dupOf?: string      // name of an existing / earlier set with the same prompt → only new images get added
   pick: boolean
 }
 
@@ -105,10 +106,14 @@ export async function readFiles(files: File[]): Promise<{ list: Candidate[]; dic
   const dict: Record<string, string> = {}
   const errors: string[] = []
   const seen = new Set(doc.sets.map((s) => s.id))
+  const keys = new Map(doc.sets.map((s) => [promptKey(s.tags, s.negative), s.name]))
   const push = (set: PromptSet, images: Record<string, string>, source: string) => {
     const conflict = seen.has(set.id)
     seen.add(set.id)
-    list.push({ set, images, source, conflict, pick: true })
+    const k = promptKey(set.tags, set.negative)
+    const dupOf = keys.get(k)
+    if (!dupOf) keys.set(k, set.name)
+    list.push({ set, images, source, conflict, dupOf, pick: true })
   }
   const stem = (f: File) => f.name.replace(/\.[^.]+$/, '')
 
@@ -151,11 +156,37 @@ export async function readFiles(files: File[]): Promise<{ list: Candidate[]; dic
 export type ConflictMode = 'copy' | 'overwrite' | 'skip'
 
 /** Add the picked candidates. Images get fresh ids so nothing already stored is clobbered. */
-export async function applyImport(list: Candidate[], dict: Record<string, string>, mode: ConflictMode): Promise<{ added: PromptSet[]; skipped: number }> {
+// image identity on import: same data URL = same picture
+async function imageSet(set: PromptSet): Promise<Set<string>> {
+  const out = new Set<string>()
+  for (const x of set.shots || []) { const d = await getImage(x.id); if (d) out.add(d) }
+  return out
+}
+
+export async function applyImport(list: Candidate[], dict: Record<string, string>, mode: ConflictMode): Promise<{ added: PromptSet[]; skipped: number; merged: number; shotsAdded: number }> {
   const added: PromptSet[] = []
-  let skipped = 0
+  let skipped = 0, merged = 0, shotsAdded = 0
+  const byKey = new Map(doc.sets.map((s) => [promptKey(s.tags, s.negative), s]))
   for (const c of list) {
     if (!c.pick) continue
+    // same prompt already here (or imported earlier in this batch): don't duplicate, just add its new images
+    const key = promptKey(c.set.tags, c.set.negative)
+    const target = byKey.get(key)
+    if (target) {
+      const have = await imageSet(target)
+      let n = 0
+      for (const x of c.set.shots || []) {
+        const data = c.images[x.id]
+        if (!data || have.has(data)) continue
+        const nid = uid('img')
+        await putImage(nid, data)
+        have.add(data)
+        ;(target.shots ||= []).push({ ...x, id: nid })
+        n++
+      }
+      if (n) { target.updatedAt = Date.now(); shotsAdded += n; merged++ } else skipped++
+      continue
+    }
     const s = clone(c.set)
     const existing = doc.sets.findIndex((x) => x.id === s.id)
     if (existing >= 0) {
@@ -180,7 +211,8 @@ export async function applyImport(list: Candidate[], dict: Record<string, string
       doc.sets.unshift(s)
     }
     added.push(s)
+    byKey.set(key, s)
   }
   for (const [k, v] of Object.entries(dict)) if (!doc.dict[k]) doc.dict[k] = v
-  return { added, skipped }
+  return { added, skipped, merged, shotsAdded }
 }

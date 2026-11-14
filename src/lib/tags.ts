@@ -116,3 +116,12 @@ export function sanitizeIdentity(en: string): string | null {
   if (!s || (s !== en.trim() && BARE_PART.test(s))) return null
   return s
 }
+
+// Content fingerprint of a prompt (order-insensitive, case/space-insensitive, weights kept),
+// used to spot duplicate prompt sets on import.
+export function promptKey(tags: Tag[], negative = ''): string {
+  const norm = (s: string) => s.toLowerCase().replace(/\s+/g, ' ').trim()
+  const pos = [...new Set(tags.map((t) => norm(t.en) + (t.weight && t.weight !== 1 ? ':' + Math.round(t.weight * 100) / 100 : '')).filter(Boolean))].sort()
+  const neg = [...new Set(negative.split(/[,，\n]/).map(norm).filter(Boolean))].sort()
+  return pos.join('|') + '##' + neg.join('|')
+}

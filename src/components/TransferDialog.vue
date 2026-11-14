@@ -69,13 +69,13 @@ async function load(files: FileList | File[] | null | undefined) {
   } finally { busy.value = false }
 }
 const picked = computed(() => cands.value.filter((c) => c.pick))
-const conflicts = computed(() => picked.value.filter((c) => c.conflict).length)
+const conflicts = computed(() => picked.value.filter((c) => c.conflict && !c.dupOf).length)
 const candSrc = (c: Candidate) => { const id = c.set.shots?.[0]?.id; return id ? c.images[id] : '' }
 async function doImport() {
   busy.value = true
   try {
     const r = await applyImport(cands.value, dict.value, conflict.value)
-    emit('toast', `已导入 ${r.added.length} 组` + (r.skipped ? `，跳过 ${r.skipped} 组重复` : ''))
+    emit('toast', `已导入 ${r.added.length} 组` + (r.merged ? `；${r.merged} 组提示词重复，已把 ${r.shotsAdded} 张新返图加到原组` : '') + (r.skipped ? `；跳过 ${r.skipped} 组完全重复` : ''), )
     if (r.added[0]) emit('select', r.added[0].id)
     emit('close')
   } catch (e: any) { emit('toast', '导入失败：' + (e?.message || e)) } finally { busy.value = false }
@@ -173,7 +173,8 @@ async function doImport() {
                   <span class="muted">{{ c.set.tags.length }}词</span>
                   <span v-if="c.set.shots?.length" class="muted">🖼{{ c.set.shots.length }}</span>
                   <span class="muted">{{ c.source }}</span>
-                  <span v-if="c.conflict" class="rtag r-SFW">已存在</span>
+                  <span v-if="c.dupOf" class="rtag r-SFW" :title="'和「' + c.dupOf + '」提示词相同，不会新建；带的新返图会加到那一组'">重复 → 只加返图</span>
+                  <span v-else-if="c.conflict" class="rtag r-SFW">已存在</span>
                 </div>
               </div>
             </label>

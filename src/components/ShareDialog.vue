@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { promptKey } from '../lib/tags'
 import { useDragSelect, listSetter } from '../lib/dragSelect'
 // Online share: share code (offline, free) or a secret GitHub Gist link (optional).
 // Left: pick sets. Right: exactly what the receiver will get.
@@ -87,10 +88,18 @@ async function pasteClip() {
   try { input.value = await navigator.clipboard.readText(); if (input.value.trim()) parse() } catch { emit('toast', '无法读取剪贴板，请手动粘贴') }
 }
 function doImport() {
-  const add = incoming.value.filter((s) => take.value.includes(s.id))
+  // share codes carry no images, so a set whose prompt is already here is simply skipped
+  const keys = new Set(doc.sets.map((s) => promptKey(s.tags, s.negative)))
+  const add = incoming.value.filter((s) => take.value.includes(s.id)).filter((s) => {
+    const k = promptKey(s.tags, s.negative)
+    if (keys.has(k)) return false
+    keys.add(k)
+    return true
+  })
+  const dup = take.value.length - add.length
   doc.sets.unshift(...add)
   if (add[0]) emit('select', add[0].id)
-  emit('toast', `已导入 ${add.length} 组`)
+  emit('toast', `已导入 ${add.length} 组` + (dup ? `，${dup} 组提示词重复已跳过` : ''))
   emit('close')
 }
 </script>

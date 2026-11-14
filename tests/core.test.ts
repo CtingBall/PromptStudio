@@ -1,7 +1,7 @@
 // Run: npm test  (Node 22.6+ built-in runner, TS stripped natively; no extra deps)
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { parseOne, tagsFromPrompt, serializeTags, sanitizeIdentity, groupTags } from '../src/lib/tags.ts'
+import { promptKey, parseOne, tagsFromPrompt, serializeTags, sanitizeIdentity, groupTags } from '../src/lib/tags.ts'
 import { parseChars, parseLayout, charBoxDesc, textBoxDesc } from '../src/lib/layout.ts'
 import { parseGenMeta } from '../src/lib/pngmeta.ts'
 import { mossJson, gbcText } from '../src/lib/comfy.ts'
@@ -96,4 +96,12 @@ test('GBC soft text', () => {
 test('fmtDate', () => {
   assert.equal(fmtDate(new Date(2026, 10, 3, 9, 5).getTime()), '2026-11-03')
   assert.equal(fmtDate(new Date(2026, 10, 3, 9, 5).getTime(), true), '2026-11-03 09:05')
+})
+
+test('promptKey spots duplicates', () => {
+  const a = tagsFromPrompt('1girl, (smile:1.2), Red  Dress', noZh)
+  const b = tagsFromPrompt('【Outfit】\nred dress,\n【Subject】\n1girl, (smile:1.2)', noZh)
+  assert.equal(promptKey(a, 'bad hands, blurry'), promptKey(b, 'blurry,bad hands'))
+  assert.notEqual(promptKey(a), promptKey(tagsFromPrompt('1girl, smile, red dress', noZh)))
+  assert.notEqual(promptKey(a, 'x'), promptKey(a, 'y'))
 })
