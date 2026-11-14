@@ -17,7 +17,7 @@ import {
 } from './lib/store'
 import { translateTags } from './lib/translate'
 import { chat } from './lib/grok'
-import { tagsFromPrompt, groupTags, serializeTags, uid } from './lib/tags'
+import { tagsFromPrompt, groupTags } from './lib/tags'
 import { lookup, snapshot, fmtDate } from './lib/store'
 import HistoryDialog from './components/HistoryDialog.vue'
 import ManualDialog from './components/ManualDialog.vue'
@@ -243,42 +243,6 @@ const hasSections = computed(() => !!current.value?.tags.some((t) => t.section))
 const sectionNames = computed(() => [...new Set((current.value?.tags || []).map((t) => t.section).filter(Boolean))] as string[])
 
 // ---- tag bulk ops ----
-// ---- random pick: draw N tags (whole prompt or N per section) ----
-const showRand = ref(false)
-const randN = ref(5)
-const randPer = ref(false)       // N per section instead of N total
-const randKeepPrefix = ref(true) // always keep the unsectioned quality prefix
-const randPick = ref<string[]>([])
-function shuffle<T>(a: T[]): T[] { a = [...a]; for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]] } return a }
-function rollRandom() {
-  const s = current.value
-  if (!s) return
-  const n = Math.max(1, Math.floor(randN.value) || 1)
-  const keep = randKeepPrefix.value ? s.tags.filter((t) => !t.section) : []
-  const pool = s.tags.filter((t) => !keep.includes(t))
-  const picked = randPer.value
-    ? groupTags(pool).flatMap((g) => shuffle(g.tags).slice(0, n))
-    : shuffle(pool).slice(0, n)
-  randPick.value = [...keep, ...picked].map((t) => t.id)
-}
-const randTags = computed(() => (current.value?.tags || []).filter((t) => randPick.value.includes(t.id)))
-async function copyRandom() {
-  try { await navigator.clipboard.writeText(serializeTags(randTags.value, false)); flash('已复制随机抽取的 ' + randTags.value.length + ' 个词') }
-  catch (e: any) { flash('复制失败：' + (e?.message || e)) }
-}
-function selectRandom() { tagMode.value = true; tagSel.value = [...randPick.value]; showRand.value = false; flash('已选中，可批量删除 / 调权重 / 移动') }
-function saveRandom() {
-  const s = current.value
-  if (!s || !randTags.value.length) return
-  const n = newSet(s.name.slice(0, 16) + ' 随机')
-  n.tags = randTags.value.map((t) => ({ ...t, id: uid() }))
-  n.negative = s.negative; n.category = s.category; n.folder = s.folder; n.labels = s.labels ? [...s.labels] : undefined
-  doc.sets.unshift(n)
-  selectedId.value = n.id
-  showRand.value = false
-  flash('已存为新组：' + n.name)
-}
-
 const tagMode = ref(false)
 const tagSel = ref<string[]>([])
 watch(selectedId, () => { tagSel.value = [] })
@@ -701,25 +665,10 @@ function clampMaxImages() {
               <button @click="copyPrompt(true)">复制(分段)</button>
               <button @click="copyPrompt(false)">复制(单行)</button>
             </div>
-            <button :class="{ on: showRand }" title="从这组里随机抽取词条" @click="showRand = !showRand; if (showRand) rollRandom()">🎲 随机</button>
             <button :class="tagMode ? 'primary' : ''" @click="tagMode = !tagMode; tagSel = []">
               {{ tagMode ? '退出批量' : '批量编辑' }}</button>
           </div>
 
-          <div v-if="showRand" class="rand-box">
-            <div class="row wrap">
-              <label class="row" style="gap: 4px">抽取 <input v-model.number="randN" type="number" min="1" style="width: 60px" /> 个</label>
-              <label class="row" style="gap: 4px"><input v-model="randPer" type="checkbox" style="width: auto" />每个分区各抽</label>
-              <label class="row" style="gap: 4px"><input v-model="randKeepPrefix" type="checkbox" style="width: auto" />保留质量前缀</label>
-              <span class="spacer" />
-              <button class="primary" @click="rollRandom">🎲 再抽一次</button>
-              <button @click="copyRandom">复制</button>
-              <button @click="selectRandom">选中它们</button>
-              <button @click="saveRandom">存为新组</button>
-              <button class="ghost" @click="showRand = false">✕</button>
-            </div>
-            <div class="rand-out">{{ serializeTags(randTags, false) || '（这组没有可抽的词）' }}</div>
-          </div>
           <template v-if="ui.tagsOpen">
           <div v-if="tagMode" class="toolbar" style="padding: 6px; background: var(--panel2); border-radius: 8px; margin-bottom: 6px">
             <div class="btn-group">

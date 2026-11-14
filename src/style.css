@@ -356,5 +356,3 @@ textarea { min-height: 2.6em; max-height: 60vh; field-sizing: content; }
   border: 1px solid var(--border); border-radius: 10px; box-shadow: var(--shadow); }
 .ctx-menu button { text-align: left; border: none; }
 
-.rand-box { padding: 8px 10px; margin-bottom: 8px; border-radius: 10px; border: 1px dashed var(--accent); background: var(--accent-soft); display: flex; flex-direction: column; gap: 6px; }
-.rand-out { font-size: .9em; line-height: 1.5; overflow-wrap: anywhere; user-select: text; }

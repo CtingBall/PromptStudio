@@ -168,6 +168,25 @@ const subFolders = computed(() => {
 })
 const browsing = computed(() => ui.explorer && !q.value.trim() && rating.value === 'ALL' && !label.value.length && !favOnly.value && !range.value)
 function openFolder(p: string) { folder.value = p; sel.value = [] }
+// ---- 🎲 random set: for "I don't know what to run" ----
+// picks from what's currently visible (respects search/rating/filters; in Explorer view also subfolders)
+const lastRand = ref('')
+function randomSet() {
+  const pre = folder.value && folder.value !== '__none' ? folder.value : ''
+  let pool = ui.explorer && browsing.value
+    ? doc.sets.filter((s) => !pre || s.folder === pre || (s.folder || '').startsWith(pre + '/'))
+    : visible.value
+  if (pool.length > 1) pool = pool.filter((s) => s.id !== lastRand.value)
+  if (!pool.length) return emit('toast', '这里没有可抽的提示词组')
+  // sets with result images are a bit more likely: they're proven to work
+  const w = pool.map((s) => (s.shots?.length ? 2 : 1) + (s.favorite ? 1 : 0))
+  let r = Math.random() * w.reduce((a, b) => a + b, 0), i = 0
+  while ((r -= w[i]) > 0 && i < pool.length - 1) i++
+  const s = pool[i]
+  lastRand.value = s.id
+  emit('update:selected', s.id)
+  emit('toast', `🎲 抽到：${s.name}${s.folder ? '（📁' + s.folder + '）' : ''}，再点一次换一个`)
+}
 function toggleView() { ui.explorer = !ui.explorer; folder.value = '' }
 function upFolder() { openFolder(folder.value.includes('/') ? folder.value.slice(0, folder.value.lastIndexOf('/')) : '') }
 function newFolder() {
@@ -245,6 +264,7 @@ function drop(t: PromptSet) {
           <option value="30">30 天内</option>
           <option value="90">90 天内</option>
         </select>
+        <button class="ghost" title="随机抽一组提示词（不知道跑什么时点一下；按当前筛选范围抽，有返图/收藏的更容易抽到）" @click="randomSet">🎲</button>
         <button :class="favOnly ? 'primary' : 'ghost'" title="只看收藏" @click="favOnly = !favOnly">★</button>
       </div>
 
