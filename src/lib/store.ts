@@ -118,7 +118,38 @@ export function removeSets(ids: string[]): void {
   for (const s of gone) for (const x of s.shots || []) if (!used.has(x.id)) deleteImage(x.id).catch(() => {})
 }
 
-export const folders = computed(() => [...new Set(doc.sets.map((s) => s.folder).filter(Boolean))].sort() as string[])
+// every folder path incl. parents of nested ones ("a/b" → "a", "a/b")
+export const folders = computed(() => {
+  const out = new Set<string>()
+  for (const f of [...(doc.folders || []), ...doc.sets.map((s) => s.folder || '')]) {
+    const parts = f.split('/').map((p) => p.trim()).filter(Boolean)
+    parts.forEach((_, i) => out.add(parts.slice(0, i + 1).join('/')))
+  }
+  return [...out].sort((a, b) => a.localeCompare(b, 'zh'))
+})
+const inPath = (f: string | undefined, p: string) => !!f && (f === p || f.startsWith(p + '/'))
+export function createFolder(path: string) {
+  path = path.split('/').map((x) => x.trim()).filter(Boolean).join('/')
+  if (!path) return ''
+  doc.folders = [...new Set([...(doc.folders || []), path])]
+  return path
+}
+// rename/move a folder; nested folders and their sets follow
+export function renameFolder(from: string, to: string) {
+  to = to.split('/').map((x) => x.trim()).filter(Boolean).join('/')
+  if (!to || to === from || to.startsWith(from + '/')) return false
+  const re = (f: string) => to + f.slice(from.length)
+  for (const s of doc.sets) if (inPath(s.folder, from)) { s.folder = re(s.folder!); s.updatedAt = Date.now() }
+  doc.folders = [...new Set((doc.folders || []).map((f) => (inPath(f, from) ? re(f) : f)).concat(to))]
+  return true
+}
+// delete a folder: its sets (and subfolders) move up to the parent
+export function deleteFolder(path: string) {
+  const parent = path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : ''
+  const re = (f: string) => { const rest = f.slice(path.length).replace(/^\//, ''); return [parent, rest].filter(Boolean).join('/') }
+  for (const s of doc.sets) if (inPath(s.folder, path)) { s.folder = re(s.folder!) || undefined; s.updatedAt = Date.now() }
+  doc.folders = (doc.folders || []).filter((f) => f !== path).map((f) => (inPath(f, path) ? re(f) : f)).filter(Boolean)
+}
 export const allLabels = computed(() => [...new Set(doc.sets.flatMap((s) => s.labels || []))].sort())
 
 // Build tags: quality prefix (no section) + sectioned tags, deduped.

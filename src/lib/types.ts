@@ -61,6 +61,7 @@ export interface StudioDoc {
   version: 1
   sets: PromptSet[]
   dict: Record<string, string>   // en(lowercased) -> zh cache
+  folders?: string[]             // explicitly created folders (may be empty), paths like "角色/hanabi"
   settings: Settings
 }
 
