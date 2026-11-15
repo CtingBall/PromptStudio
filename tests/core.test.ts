@@ -105,3 +105,23 @@ test('promptKey spots duplicates', () => {
   assert.notEqual(promptKey(a), promptKey(tagsFromPrompt('1girl, smile, red dress', noZh)))
   assert.notEqual(promptKey(a, 'x'), promptKey(a, 'y'))
 })
+
+test('genInfo: A1111 model / loras / params', async () => {
+  const { genInfo } = await import('../src/lib/pngmeta.ts')
+  const i = genInfo('1girl, <lora:hanabi_v2:0.8>\nNegative prompt: bad\nSteps: 28, Sampler: Euler a, CFG scale: 5.5, Seed: 42, Size: 832x1216, Model: animagine-xl-4.0, Lora hashes: "hanabi_v2: abc, style: def"')!
+  assert.equal(i.model, 'animagine-xl-4.0')
+  assert.deepEqual(i.loras.map((l) => l.name), ['hanabi_v2', 'style'])
+  assert.equal(i.loras[0].weight, 0.8)
+  assert.equal(i.steps, 28); assert.equal(i.cfg, 5.5); assert.equal(i.seed, '42'); assert.equal(i.size, '832x1216')
+})
+
+test('genInfo: ComfyUI graph', async () => {
+  const { genInfo } = await import('../src/lib/pngmeta.ts')
+  const g = { 1: { class_type: 'CheckpointLoaderSimple', inputs: { ckpt_name: 'sdxl\\noob.safetensors' } },
+    2: { class_type: 'LoraLoader', inputs: { lora_name: 'chars/sqx.safetensors', strength_model: 0.9, model: ['1', 0] } },
+    3: { class_type: 'KSampler', inputs: { seed: 7, steps: 20, cfg: 4, sampler_name: 'euler', scheduler: 'normal', denoise: 1 } },
+    4: { class_type: 'EmptyLatentImage', inputs: { width: 1024, height: 1024 } } }
+  const i = genInfo(JSON.stringify(g))!
+  assert.equal(i.model, 'noob'); assert.equal(i.loras[0].name, 'sqx'); assert.equal(i.loras[0].weight, 0.9)
+  assert.equal(i.steps, 20); assert.equal(i.seed, '7'); assert.equal(i.size, '1024x1024')
+})

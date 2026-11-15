@@ -7,7 +7,7 @@ import { doc, touch } from '../lib/store'
 import { uid } from '../lib/tags'
 import { putImage, deleteImage, imgSrc } from '../lib/imagedb'
 import { fileToDataUrl } from '../lib/image'
-import { readPngText, parseGenMeta } from '../lib/pngmeta'
+import { readPngText, parseGenMeta, metaOf, genInfo, infoLine } from '../lib/pngmeta'
 
 const props = defineProps<{ set: PromptSet }>()
 const emit = defineEmits<{
@@ -70,13 +70,20 @@ function cover(id: string) {
 // ---- lightbox ----
 const view = ref(-1)
 const cur = computed(() => shots.value[view.value])
-// shot.meta stores the raw text: ComfyUI "prompt" JSON or an A1111/NovelAI string.
-function metaOf(raw: string) {
-  const s = raw.trim()
-  if (s.startsWith('{')) {
-    try { JSON.parse(s); return parseGenMeta({ prompt: s }) } catch { /* not JSON, fall through */ }
+const curInfo = computed(() => genInfo(cur.value?.meta))
+// models / LoRAs used across all result images of this set
+const usage = computed(() => {
+  const models = new Map<string, number>(), loras = new Map<string, number>()
+  for (const s of shots.value) {
+    const i = genInfo(s.meta)
+    if (!i) continue
+    if (i.model) models.set(i.model, (models.get(i.model) || 0) + 1)
+    for (const l of i.loras) loras.set(l.name, (loras.get(l.name) || 0) + 1)
   }
-  return parseGenMeta({ parameters: raw })
+  return { models: [...models], loras: [...loras] }
+})
+async function copyText(t: string, what: string) {
+  try { await navigator.clipboard.writeText(t); emit('toast', '已复制' + what) } catch { emit('toast', '复制失败') }
 }
 const curMeta = computed(() => (cur.value?.meta ? metaOf(cur.value.meta) : null))
 function key(e: KeyboardEvent) {
@@ -101,12 +108,17 @@ onBeforeUnmount(() => window.removeEventListener('keydown', key))
       <input ref="fileEl" type="file" accept="image/*" multiple style="display: none"
         @change="add(($event.target as HTMLInputElement).files); ($event.target as HTMLInputElement).value = ''" />
     </div>
+    <div v-if="usage.models.length || usage.loras.length" class="usage">
+      <span v-for="[m, n] in usage.models" :key="'m' + m" class="pill model-pill" :title="'模型，' + n + ' 张图用过'">🧠 {{ m }}<small v-if="n > 1"> ×{{ n }}</small></span>
+      <span v-for="[l, n] in usage.loras" :key="'l' + l" class="pill lora-pill" :title="'LoRA，' + n + ' 张图用过'">🧩 {{ l }}<small v-if="n > 1"> ×{{ n }}</small></span>
+    </div>
     <div :class="['drop', { hover }]" @dragover.prevent="hover = true" @dragleave="hover = false" @drop.prevent.stop="onDrop">
       <div v-if="shots.length" class="shot-grid">
         <div v-for="(x, i) in shots" :key="x.id" class="shot" @click="view = i">
           <img v-if="imgSrc(x.id)" :src="imgSrc(x.id)" />
           <span v-if="i === 0" class="shot-badge">封面</span>
-          <span v-if="x.meta" class="shot-badge" style="left: auto; right: 4px">参数</span>
+          <span v-if="genInfo(x.meta)?.model" class="shot-model" :title="infoLine(genInfo(x.meta)!)">{{ genInfo(x.meta)!.model }}</span>
+          <span v-else-if="x.meta" class="shot-badge" style="left: auto; right: 4px">参数</span>
         </div>
       </div>
       <p v-else class="muted" style="text-align: center; margin: 14px 0; font-size: 12px">
@@ -132,8 +144,23 @@ onBeforeUnmount(() => window.removeEventListener('keydown', key))
           <button v-if="curMeta" @click="emit('import-meta', { ...curMeta, shotId: cur.id, raw: cur.meta }); view = -1">📥 用图里的参数新建组</button>
           <button class="ghost" :disabled="view === 0" @click="cover(cur.id)">设为封面</button>
           <button class="ghost danger" @click="remove(cur.id)">删除这张</button>
+          <div v-if="curInfo" class="gen-info">
+            <div class="muted" style="font-size: 12px">生成信息（{{ curInfo.source }}）</div>
+            <dl>
+              <template v-if="curInfo.model"><dt>模型</dt><dd>🧠 {{ curInfo.model }}</dd></template>
+              <template v-if="curInfo.vae"><dt>VAE</dt><dd>{{ curInfo.vae }}</dd></template>
+              <template v-if="curInfo.loras.length"><dt>LoRA</dt><dd><span v-for="l in curInfo.loras" :key="l.name" class="pill lora-pill">🧩 {{ l.name }}<small v-if="l.weight != null"> {{ l.weight }}</small></span></dd></template>
+              <template v-if="curInfo.sampler"><dt>采样器</dt><dd>{{ curInfo.sampler }}<span v-if="curInfo.scheduler" class="muted"> / {{ curInfo.scheduler }}</span></dd></template>
+              <template v-if="curInfo.steps"><dt>步数</dt><dd>{{ curInfo.steps }}</dd></template>
+              <template v-if="curInfo.cfg != null"><dt>CFG</dt><dd>{{ curInfo.cfg }}</dd></template>
+              <template v-if="curInfo.size"><dt>尺寸</dt><dd>{{ curInfo.size }}</dd></template>
+              <template v-if="curInfo.denoise != null && curInfo.denoise < 1"><dt>重绘幅度</dt><dd>{{ curInfo.denoise }}</dd></template>
+              <template v-if="curInfo.seed"><dt>种子</dt><dd><code>{{ curInfo.seed }}</code> <button class="ghost sm" @click="copyText(curInfo.seed!, '种子')">复制</button></dd></template>
+            </dl>
+            <button class="ghost sm" @click="copyText(infoLine(curInfo), '参数摘要')">复制参数摘要</button>
+          </div>
           <div v-if="curMeta" class="meta-box">
-            <div class="muted" style="font-size: 12px">图内参数</div>
+            <div class="muted" style="font-size: 12px">图内提示词</div>
             <div><b>正向</b> {{ curMeta.positive }}</div>
             <div v-if="curMeta.negative"><b>负向</b> {{ curMeta.negative }}</div>
             <div v-if="curMeta.params" class="muted">{{ curMeta.params }}</div>

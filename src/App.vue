@@ -245,7 +245,7 @@ const sectionNames = computed(() => [...new Set((current.value?.tags || []).map(
 // ---- tag bulk ops ----
 const tagMode = ref(false)
 const tagSel = ref<string[]>([])
-watch(selectedId, () => { tagSel.value = [] })
+watch(selectedId, () => { tagSel.value = []; showLayout.value = !!current.value?.regions?.length })
 const tagDs = useDragSelect()
 let sweptId = ''
 function tagDown(e: MouseEvent, id: string) {
@@ -659,7 +659,7 @@ function clampMaxImages() {
             <div class="btn-group">
               <button @click="openRaw">编辑原文</button>
               <button @click="openGen('rewrite')">AI 改写格式</button>
-              <button :class="{ on: showLayout }" @click="ensureLayout">画框布局</button>
+              <button :class="{ on: showLayout }" @click="ensureLayout">画框布局<span v-if="current.regions?.length" class="badge" style="margin-left: 4px">{{ current.regions.length }}</span></button>
             </div>
             <div class="btn-group">
               <button @click="copyPrompt(true)">复制(分段)</button>

@@ -56,3 +56,119 @@ export function parseGenMeta(t: Record<string, string>): GenMeta | null {
   if (t.Description) return { positive: t.Description, negative: '', params: t.Comment || '', raw: t.Description }
   return null
 }
+
+// shot.meta stores the raw text: ComfyUI "prompt" JSON or an A1111/NovelAI string.
+export function metaOf(raw: string): GenMeta | null {
+  const s = raw.trim()
+  if (s.startsWith('{')) {
+    try { JSON.parse(s); return parseGenMeta({ prompt: s }) } catch { /* not JSON, fall through */ }
+  }
+  return parseGenMeta({ parameters: raw })
+}
+
+// ---- structured generation info: model / LoRAs / sampler / steps / CFG / seed / size ----
+export interface LoraUse { name: string; weight?: number }
+export interface GenInfo {
+  source: 'A1111' | 'ComfyUI' | ''
+  model?: string
+  vae?: string
+  loras: LoraUse[]
+  sampler?: string
+  scheduler?: string
+  steps?: number
+  cfg?: number
+  seed?: string
+  size?: string
+  denoise?: number
+}
+
+// "models/foo/bar.safetensors" → "bar"
+export function shortName(p: string): string {
+  return String(p).split(/[\\/]/).pop()!.replace(/\.(safetensors|ckpt|pt|pth|bin|gguf|sft)$/i, '')
+}
+const num = (v: unknown) => (typeof v === 'number' ? v : typeof v === 'string' && v.trim() !== '' && !isNaN(+v) ? +v : undefined)
+const str = (v: unknown) => (typeof v === 'string' || typeof v === 'number' ? String(v) : undefined)
+
+// A1111 "Steps: 28, Sampler: Euler a, Lora hashes: "a: 1, b: 2", Model: x" → map
+export function a1111Params(p: string): Record<string, string> {
+  const out: Record<string, string> = {}
+  const re = /\s*([A-Za-z][\w \-/]*?):\s*("(?:\\.|[^"\\])*"|[^,]*)(?:,|$)/g
+  let m: RegExpExecArray | null
+  while ((m = re.exec(p)) && m[0]) {
+    let v = m[2].trim()
+    if (v.startsWith('"')) { try { v = JSON.parse(v) } catch { v = v.slice(1, -1) } }
+    out[m[1].trim()] = v
+  }
+  return out
+}
+
+function fromA1111(meta: GenMeta): GenInfo {
+  const p = a1111Params(meta.params)
+  const loras: LoraUse[] = []
+  for (const m of meta.positive.matchAll(/<(?:lora|lyco):([^:>]+)(?::([-\d.]+))?[^>]*>/gi))
+    loras.push({ name: shortName(m[1]), weight: m[2] ? +m[2] : undefined })
+  for (const part of (p['Lora hashes'] || '').split(',')) {
+    const n = part.split(':')[0].trim()
+    if (n && !loras.some((l) => l.name === n)) loras.push({ name: n })
+  }
+  return {
+    source: 'A1111', loras,
+    model: p.Model ? shortName(p.Model) : p['Model hash'] ? '#' + p['Model hash'] : undefined,
+    vae: p.VAE ? shortName(p.VAE) : undefined,
+    sampler: p.Sampler, scheduler: p['Schedule type'],
+    steps: num(p.Steps), cfg: num(p['CFG scale']), seed: p.Seed, size: p.Size,
+    denoise: num(p['Denoising strength']),
+  }
+}
+
+function fromComfy(g: Record<string, any>): GenInfo {
+  const info: GenInfo = { source: 'ComfyUI', loras: [] }
+  for (const n of Object.values(g)) {
+    const t = String(n?.class_type || ''), i = n?.inputs || {}
+    if (!info.model && /checkpoint|unet|diffusion|model.*loader/i.test(t) && !/lora|clip|vae|upscale/i.test(t)) {
+      const m = str(i.ckpt_name) || str(i.unet_name) || str(i.model_name)
+      if (m) info.model = shortName(m)
+    }
+    if (/vaeloader/i.test(t) && str(i.vae_name)) info.vae = shortName(i.vae_name)
+    if (/lora/i.test(t)) {
+      if (str(i.lora_name)) info.loras.push({ name: shortName(i.lora_name), weight: num(i.strength_model) })
+      // rgthree Power Lora Loader & friends: lora_1: {on, lora, strength}
+      for (const v of Object.values(i)) {
+        if (v && typeof v === 'object' && !Array.isArray(v) && str((v as any).lora) && (v as any).on !== false)
+          info.loras.push({ name: shortName((v as any).lora), weight: num((v as any).strength) })
+      }
+    }
+    if (/sampler/i.test(t) && !/select|custom/i.test(t)) {
+      info.seed ??= str(i.seed) ?? str(i.noise_seed)
+      info.steps ??= num(i.steps)
+      info.cfg ??= num(i.cfg)
+      info.sampler ??= str(i.sampler_name)
+      info.scheduler ??= str(i.scheduler)
+      info.denoise ??= num(i.denoise)
+    }
+    if (!info.size && /latent/i.test(t) && num(i.width) && num(i.height)) info.size = `${i.width}x${i.height}`
+  }
+  return info
+}
+
+const infoCache = new Map<string, GenInfo | null>()
+export function genInfo(raw: string | undefined): GenInfo | null {
+  if (!raw) return null
+  if (infoCache.has(raw)) return infoCache.get(raw)!
+  let r: GenInfo | null = null
+  const s = raw.trim()
+  if (s.startsWith('{')) {
+    try { r = fromComfy(JSON.parse(s)) } catch { /* not JSON */ }
+  }
+  if (!r) { const m = metaOf(raw); r = m && m.params ? fromA1111(m) : null }
+  if (r && !r.model && !r.loras.length && !r.steps && !r.seed) r = null
+  if (infoCache.size > 500) infoCache.clear()
+  infoCache.set(raw, r)
+  return r
+}
+
+// one-line summary, e.g. "animagine · 28步 · CFG 5 · Euler a · 832x1216 · seed 123"
+export function infoLine(i: GenInfo): string {
+  return [i.model, i.steps && i.steps + '步', i.cfg != null && 'CFG ' + i.cfg, i.sampler && i.sampler + (i.scheduler ? ' / ' + i.scheduler : ''),
+    i.size, i.seed && 'seed ' + i.seed, i.denoise != null && i.denoise < 1 && '重绘 ' + i.denoise].filter(Boolean).join(' · ')
+}

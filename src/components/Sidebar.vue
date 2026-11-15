@@ -4,6 +4,8 @@ import { ref, computed } from 'vue'
 import { doc, addSet, newSet, touch, removeSets, folders, createFolder, renameFolder, deleteFolder, allLabels, promptText, fmtDate, dateBucket } from '../lib/store'
 import { CATEGORIES, RATING_LABEL, type Category, type PromptSet } from '../lib/types'
 import { imgSrc } from '../lib/imagedb'
+import { genInfo } from '../lib/pngmeta'
+import LayoutMini from './LayoutMini.vue'
 import { aiClassify } from '../lib/ai'
 import { ui } from '../lib/ui'
 
@@ -16,6 +18,15 @@ const rating = ref<'ALL' | 'NONE' | Category>('ALL')
 const folder = ref('')          // current folder path, '' = root (like Windows Explorer)
 const label = ref<string[]>([])
 const favOnly = ref(false)
+const layoutOnly = ref(false)   // only sets that have a bbox layout
+const shotsOnly = ref(false)    // only sets that have result images
+const hasLayout = (s: PromptSet) => !!s.regions?.length
+// model / LoRA names used by a set's result images (for search + list hint)
+function setModels(s: PromptSet): string[] {
+  const out = new Set<string>()
+  for (const x of s.shots || []) { const i = genInfo(x.meta); if (i?.model) out.add(i.model); i?.loras.forEach((l) => out.add(l.name)) }
+  return [...out]
+}
 const sort = ref<'manual' | 'updated' | 'created' | 'oldest' | 'name'>('manual')
 const range = ref<'' | '1' | '7' | '30' | '90'>('')   // only sets created in the last N days
 
@@ -27,14 +38,16 @@ const visible = computed(() => {
     if (!ui.explorer) {
       // classic view: folder dropdown filters, '' = all, '__none' = no folder
       if (folder.value === '__none' ? s.folder : folder.value && !(s.folder === folder.value || (s.folder || '').startsWith(folder.value + '/'))) return false
-    } else if (k || rating.value !== 'ALL' || label.value.length || favOnly.value || range.value) {
+    } else if (k || rating.value !== 'ALL' || label.value.length || favOnly.value || range.value || layoutOnly.value || shotsOnly.value) {
       if (folder.value && !(s.folder === folder.value || (s.folder || '').startsWith(folder.value + '/'))) return false
     } else if ((s.folder || '') !== folder.value) return false
     if (label.value.length && !label.value.every((l) => s.labels?.includes(l))) return false
     if (favOnly.value && !s.favorite) return false
+    if (layoutOnly.value && !hasLayout(s)) return false
+    if (shotsOnly.value && !s.shots?.length) return false
     if (range.value && s.createdAt < Date.now() - Number(range.value) * 86400000) return false
     if (k) {
-      const hay = [s.name, fmtDate(s.createdAt), s.folder, ...(s.labels || []), ...s.tags.map((t) => t.en + ' ' + t.zh)].join(' ').toLowerCase()
+      const hay = [s.name, fmtDate(s.createdAt), s.folder, ...(s.labels || []), ...setModels(s), ...(s.regions || []).map((r) => r.text), ...s.tags.map((t) => t.en + ' ' + t.zh)].join(' ').toLowerCase()
       if (!hay.includes(k)) return false
     }
     return true
@@ -166,7 +179,7 @@ const subFolders = computed(() => {
       return { path, name: path.slice(pre.length), count: inside.length, cover }
     })
 })
-const browsing = computed(() => ui.explorer && !q.value.trim() && rating.value === 'ALL' && !label.value.length && !favOnly.value && !range.value)
+const browsing = computed(() => ui.explorer && !q.value.trim() && rating.value === 'ALL' && !label.value.length && !favOnly.value && !range.value && !layoutOnly.value && !shotsOnly.value)
 function openFolder(p: string) { folder.value = p; sel.value = [] }
 // ---- 🎲 random set: for "I don't know what to run" ----
 // picks from what's currently visible (respects search/rating/filters; in Explorer view also subfolders)
@@ -266,6 +279,8 @@ function drop(t: PromptSet) {
         </select>
         <button class="ghost" title="随机抽一组提示词（不知道跑什么时点一下；按当前筛选范围抽，有返图/收藏的更容易抽到）" @click="randomSet">🎲</button>
         <button :class="favOnly ? 'primary' : 'ghost'" title="只看收藏" @click="favOnly = !favOnly">★</button>
+        <button :class="layoutOnly ? 'primary' : 'ghost'" title="只看有画框布局的组" @click="layoutOnly = !layoutOnly">▦</button>
+        <button :class="shotsOnly ? 'primary' : 'ghost'" title="只看有返图的组" @click="shotsOnly = !shotsOnly">🖼</button>
       </div>
 
       <template v-if="allLabels.length">
@@ -351,7 +366,9 @@ function drop(t: PromptSet) {
         <input v-if="bulk" type="checkbox" :checked="sel.includes(s.id)" style="width: auto; pointer-events: none" tabindex="-1" />
         <div v-if="mode !== 'mode-list'" :class="['thumb', { multi: (s.shots?.length || 0) > 1, many: (s.shots?.length || 0) > 2 }]">
           <img v-if="s.shots?.length && imgSrc(s.shots[0].id)" :src="imgSrc(s.shots[0].id)" />
+          <LayoutMini v-else-if="hasLayout(s)" :set="s" :size="mode === 'mode-row' ? 40 : 120" class="thumb-layout" />
           <span v-else>{{ s.name.slice(0, 1) }}</span>
+          <LayoutMini v-if="hasLayout(s) && s.shots?.length && mode !== 'mode-row'" :set="s" :size="34" class="thumb-corner" />
         </div>
         <div class="set-text">
           <div class="set-name" :title="s.name">
@@ -361,7 +378,9 @@ function drop(t: PromptSet) {
             <span v-if="s.category" :class="['rtag', 'r-' + s.category]">{{ RATING_LABEL[s.category] }}</span>
             <span v-if="s.folder" class="muted">📁{{ s.folder }}</span>
             <span class="muted">{{ s.tags.length }}词</span>
+            <span v-if="hasLayout(s)" class="layout-tag" :title="s.regions!.length + ' 个框' + (s.canvas ? '，' + s.canvas.w + '×' + s.canvas.h : '')">▦ {{ s.regions!.length }}框</span>
             <span v-if="s.shots?.length" class="muted">🖼{{ s.shots.length }}</span>
+            <span v-if="setModels(s).length && mode !== 'mode-list'" class="muted model-hint" :title="setModels(s).join('\n')">🧠{{ setModels(s)[0] }}<template v-if="setModels(s).length > 1"> +{{ setModels(s).length - 1 }}</template></span>
             <span class="muted" :title="'创建 ' + fmtDate(s.createdAt, true) + '\n修改 ' + fmtDate(s.updatedAt, true)">{{ fmtDate(s.createdAt).slice(5) }}</span>
           </div>
         </div>

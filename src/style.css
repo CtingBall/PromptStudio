@@ -356,3 +356,24 @@ textarea { min-height: 2.6em; max-height: 60vh; field-sizing: content; }
   border: 1px solid var(--border); border-radius: 10px; box-shadow: var(--shadow); }
 .ctx-menu button { text-align: left; border: none; }
 
+
+/* v0.3.6 layout visibility + generation info */
+.layout-mini { display: block; }
+.layout-mini .lm-bg { fill: var(--canvas); }
+.thumb-layout { margin: auto; }
+.thumb { position: relative; display: flex; align-items: center; justify-content: center; }
+.thumb-corner { position: absolute; right: 4px; bottom: 4px; border-radius: 3px; box-shadow: 0 0 0 1px var(--border), var(--shadow); opacity: .92; }
+.layout-tag { padding: 0 6px; border-radius: 999px; font-size: .85em; background: var(--accent-soft); color: var(--accent); white-space: nowrap; }
+.model-hint { max-width: 12em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.usage { display: flex; flex-wrap: wrap; gap: 4px; margin: 0 0 6px; }
+.model-pill { background: var(--accent-soft); color: var(--accent); }
+.lora-pill { background: color-mix(in srgb, var(--c-sfw) 18%, transparent); color: var(--text); }
+.pill small { opacity: .7; }
+.shot { position: relative; }
+.shot-model { position: absolute; left: 0; right: 0; bottom: 0; padding: 2px 6px; font-size: 11px; color: #fff;
+  background: linear-gradient(transparent, rgba(0,0,0,.75)); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gen-info { border: 1px solid var(--border); border-radius: 10px; padding: 8px 10px; background: var(--panel2); display: flex; flex-direction: column; gap: 6px; }
+.gen-info dl { display: grid; grid-template-columns: auto 1fr; gap: 3px 10px; margin: 0; font-size: .92em; }
+.gen-info dt { color: var(--muted); }
+.gen-info dd { margin: 0; overflow-wrap: anywhere; display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.gen-info code { font-size: .95em; }
