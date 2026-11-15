@@ -134,16 +134,6 @@ test('promptFormat guesses writing style', () => {
   assert.equal(promptFormat([t('a quiet street', 'Caption'), t('1girl')]), 'gbc')
 })
 
-test('civitai: ids and meta → parameters', async () => {
-  const { civitaiImageIds, metaToParameters } = await import('../src/lib/civitai.ts')
-  assert.deepEqual(civitaiImageIds('https://civitai.com/images/12345?x=1\nhttps://civitai.com/images/678'), ['12345', '678'])
-  const t = metaToParameters({ prompt: '1girl', negativePrompt: 'bad', steps: 25, cfgScale: 5, seed: 9, Size: '832x1216', Model: 'noobai',
-    resources: [{ type: 'lora', name: 'hanabi', weight: 0.8 }] })
-  const { genInfo } = await import('../src/lib/pngmeta.ts')
-  const i = genInfo(t)!
-  assert.equal(i.model, 'noobai'); assert.equal(i.steps, 25); assert.equal(i.loras[0].name, 'hanabi'); assert.equal(i.loras[0].weight, 0.8)
-})
-
 test('exif UserComment (JPEG)', async () => {
   const { exifUserComment } = await import('../src/lib/pngmeta.ts')
   const text = 'a cat\nSteps: 20'

@@ -37,23 +37,10 @@ async function forward(req) {
   }
 }
 
-// GET-only fetch for Civitai pages the renderer can't reach (CORS); hosts are whitelisted.
-const NET_HOSTS = /(^|\.)(civitai\.com|civitai\.green)$/i
-async function netGet(url) {
-  let target
-  try { target = new URL(url.searchParams.get('url') || '') } catch { return json(400, { error: 'bad url' }) }
-  if (target.protocol !== 'https:' || !NET_HOSTS.test(target.hostname)) return json(403, { error: 'host not allowed' })
-  try {
-    const r = await net.fetch(target.toString(), { headers: { Accept: '*/*' } })
-    return new Response(Buffer.from(await r.arrayBuffer()), { status: r.status, headers: { 'Content-Type': r.headers.get('content-type') || 'application/octet-stream' } })
-  } catch (e) { return json(502, { error: String((e && e.message) || e) }) }
-}
-
 function serve(req) {
   const url = new URL(req.url)
   if (url.pathname === '/llm/chat') return forward(req)
   if (url.pathname === '/update/check') return manualCheck()
-  if (url.pathname === '/net/get') return netGet(url)
   let rel = decodeURIComponent(url.pathname)
   if (rel === '/' || !path.extname(rel)) rel = '/index.html'
   const file = path.normalize(path.join(DIST, rel))
