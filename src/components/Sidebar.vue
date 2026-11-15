@@ -2,7 +2,8 @@
 import { useDragSelect, listSetter } from '../lib/dragSelect'
 import { ref, computed } from 'vue'
 import { doc, addSet, newSet, touch, removeSets, folders, createFolder, renameFolder, deleteFolder, allLabels, promptText, fmtDate, dateBucket } from '../lib/store'
-import { CATEGORIES, RATING_LABEL, type Category, type PromptSet } from '../lib/types'
+import { CATEGORIES, RATING_LABEL, FORMAT_LABEL, type Category, type PromptSet } from '../lib/types'
+import { promptFormat } from '../lib/tags'
 import { imgSrc } from '../lib/imagedb'
 import { genInfo } from '../lib/pngmeta'
 import LayoutMini from './LayoutMini.vue'
@@ -21,6 +22,9 @@ const favOnly = ref(false)
 const layoutOnly = ref(false)   // only sets that have a bbox layout
 const shotsOnly = ref(false)    // only sets that have result images
 const hasLayout = (s: PromptSet) => !!s.regions?.length
+// image overlays (format / layout) only once cards are big enough to read them
+const overlay = computed(() => ui.cardSize >= 55)
+const fmtIcon: Record<string, string> = { tags: '🏷', natural: '📝', mixed: '🏷📝', gbc: '🕸' }
 // model / LoRA names used by a set's result images (for search + list hint)
 function setModels(s: PromptSet): string[] {
   const out = new Set<string>()
@@ -369,6 +373,11 @@ function drop(t: PromptSet) {
           <LayoutMini v-else-if="hasLayout(s)" :set="s" :size="mode === 'mode-row' ? 40 : 120" class="thumb-layout" />
           <span v-else>{{ s.name.slice(0, 1) }}</span>
           <LayoutMini v-if="hasLayout(s) && s.shots?.length && mode !== 'mode-row'" :set="s" :size="34" class="thumb-corner" />
+          <template v-if="overlay">
+            <span :class="['ov', 'ov-fmt', 'f-' + promptFormat(s.tags)]" :title="'提示词写法：' + FORMAT_LABEL[promptFormat(s.tags)]">{{ fmtIcon[promptFormat(s.tags)] }} {{ FORMAT_LABEL[promptFormat(s.tags)] }}</span>
+            <span v-if="hasLayout(s)" class="ov ov-layout" :title="s.regions!.length + ' 个框' + (s.canvas ? '，' + s.canvas.w + '×' + s.canvas.h : '')">▦ 画框 {{ s.regions!.length }}</span>
+            <span v-if="s.category" :class="['ov', 'ov-rate', 'r-' + s.category]">{{ RATING_LABEL[s.category] }}</span>
+          </template>
         </div>
         <div class="set-text">
           <div class="set-name" :title="s.name">

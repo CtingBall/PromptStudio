@@ -1,6 +1,16 @@
 import type { Tag } from './types'
 
 let seq = 0
+// Guess how a set's prompt is written: GBC / natural language / tags+NL / plain tags.
+// A "sentence" tag has 6+ words or ends a clause with ". ".
+export function promptFormat(tags: Array<{ en: string; section?: string }>): 'tags' | 'natural' | 'mixed' | 'gbc' {
+  if (!tags.length) return 'tags'
+  if (tags.some((t) => /^\s*<gbc\b/i.test(t.en) || t.section === 'Caption')) return 'gbc'
+  const long = tags.filter((t) => t.en.trim().split(/\s+/).length >= 6 || /\.\s/.test(t.en)).length
+  if (!long) return 'tags'
+  return long / tags.length >= 0.6 ? 'natural' : 'mixed'
+}
+
 export function uid(prefix = 't'): string {
   seq += 1
   return `${prefix}${Date.now().toString(36)}${seq.toString(36)}`

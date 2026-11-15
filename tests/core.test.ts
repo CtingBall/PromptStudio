@@ -1,7 +1,7 @@
 // Run: npm test  (Node 22.6+ built-in runner, TS stripped natively; no extra deps)
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { promptKey, parseOne, tagsFromPrompt, serializeTags, sanitizeIdentity, groupTags } from '../src/lib/tags.ts'
+import { promptFormat, promptKey, parseOne, tagsFromPrompt, serializeTags, sanitizeIdentity, groupTags } from '../src/lib/tags.ts'
 import { parseChars, parseLayout, charBoxDesc, textBoxDesc } from '../src/lib/layout.ts'
 import { parseGenMeta } from '../src/lib/pngmeta.ts'
 import { mossJson, gbcText } from '../src/lib/comfy.ts'
@@ -124,4 +124,12 @@ test('genInfo: ComfyUI graph', async () => {
   const i = genInfo(JSON.stringify(g))!
   assert.equal(i.model, 'noob'); assert.equal(i.loras[0].name, 'sqx'); assert.equal(i.loras[0].weight, 0.9)
   assert.equal(i.steps, 20); assert.equal(i.seed, '7'); assert.equal(i.size, '1024x1024')
+})
+
+test('promptFormat guesses writing style', () => {
+  const t = (en: string, section?: string) => ({ en, section })
+  assert.equal(promptFormat([t('1girl'), t('solo')]), 'tags')
+  assert.equal(promptFormat([t('A girl stands on the rooftop at dusk, wind in her hair.')]), 'natural')
+  assert.equal(promptFormat([t('1girl'), t('solo'), t('masterpiece'), t('she is looking back over her shoulder')]), 'mixed')
+  assert.equal(promptFormat([t('a quiet street', 'Caption'), t('1girl')]), 'gbc')
 })
