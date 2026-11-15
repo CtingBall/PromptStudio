@@ -148,3 +148,13 @@ test('exif UserComment (JPEG)', async () => {
   const jpg = new Uint8Array([0xff, 0xd8, 0xff, 0xe1, (app1.length + 2) >> 8, (app1.length + 2) & 255, ...app1, 0xff, 0xd9])
   assert.equal(exifUserComment(jpg), text)
 })
+
+test('civitai query / url', async () => {
+  const { civitaiQuery, civitaiUrl, genInfo } = await import('../src/lib/pngmeta.ts')
+  assert.equal(civitaiQuery('hanabi_v2-000012'), 'hanabi')
+  assert.equal(civitaiQuery('animagineXL_v31_fp16'), 'animagineXL')
+  assert.match(civitaiUrl({ name: 'x', hash: 'abcdef1234', site: 'red' }), /^https:\/\/civitai\.red\/search\/models\?query=abcdef1234$/)
+  assert.equal(civitaiUrl({ name: 'x', site: 'blue', links: { x: 'https://civitai.com/models/1' } }), 'https://civitai.com/models/1')
+  const i = genInfo('a\nSteps: 20, Model hash: 1a2b3c4d5e, Model: foo, Lora hashes: "bar: 9f8e7d6c5b4a"')!
+  assert.equal(i.modelHash, '1a2b3c4d5e'); assert.equal(i.loras[0].hash, '9f8e7d6c5b4a')
+})

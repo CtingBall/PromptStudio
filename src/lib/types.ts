@@ -80,6 +80,8 @@ export interface Settings {
   bboxScale: 1 | 1000    // bbox output coordinate scale: 0–1 floats or 0–1000 ints
   genChars: string       // characters, one per line: 名字=触发词 | 引导词
   firstLine: string      // put on line 1 of the MOSS prompt, e.g. <|artist|>fkey<|/artist|>
+  civitaiSite?: 'auto' | 'blue' | 'red'      // which Civitai to open: 蓝站 / 红站 / by set rating
+  civitaiLinks?: Record<string, string>      // model/LoRA file name → the user's chosen Civitai page
   genFormat: PromptFormat // how generated prompts are written
   routes: Partial<Record<AiTask, AiRoute>> // per-feature model override; empty fields fall back to the main AI
 }
@@ -120,6 +122,8 @@ export const DEFAULT_SETTINGS: Settings = {
   bboxScale: 1000,
   genChars: '',
   firstLine: '',
+  civitaiSite: 'auto',
+  civitaiLinks: {},
   genFormat: 'tags',
   routes: {},
 }

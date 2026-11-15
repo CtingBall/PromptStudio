@@ -395,3 +395,8 @@ textarea { min-height: 2.6em; max-height: 60vh; field-sizing: content; }
 .side-list.mode-card .thumb-corner { bottom: 30px; }
 
 a.pill { text-decoration: none; }
+
+.lora-link { display: inline-flex; align-items: center; gap: 1px; }
+.civ-seg button { padding: 1px 8px; font-size: 12px; }
+.civ-seg .civ-blue.on { background: #2563eb; color: #fff; }
+.civ-seg .civ-red.on { background: #dc2626; color: #fff; }

@@ -118,10 +118,11 @@ export function metaOf(raw: string): GenMeta | null {
 }
 
 // ---- structured generation info: model / LoRAs / sampler / steps / CFG / seed / size ----
-export interface LoraUse { name: string; weight?: number }
+export interface LoraUse { name: string; weight?: number; hash?: string }
 export interface GenInfo {
   source: 'A1111' | 'ComfyUI' | ''
   model?: string
+  modelHash?: string
   vae?: string
   loras: LoraUse[]
   sampler?: string
@@ -159,12 +160,16 @@ function fromA1111(meta: GenMeta): GenInfo {
   for (const m of meta.positive.matchAll(/<(?:lora|lyco):([^:>]+)(?::([-\d.]+))?[^>]*>/gi))
     loras.push({ name: shortName(m[1]), weight: m[2] ? +m[2] : undefined })
   for (const part of (p['Lora hashes'] || '').split(',')) {
-    const n = part.split(':')[0].trim()
-    if (n && !loras.some((l) => l.name === n)) loras.push({ name: n })
+    const [n, h] = part.split(':').map((x) => x.trim())
+    if (!n) continue
+    const hit = loras.find((l) => l.name === n)
+    if (hit) hit.hash ||= h
+    else loras.push({ name: n, hash: h })
   }
   return {
     source: 'A1111', loras,
     model: p.Model ? shortName(p.Model) : p['Model hash'] ? '#' + p['Model hash'] : undefined,
+    modelHash: p['Model hash'] || undefined,
     vae: p.VAE ? shortName(p.VAE) : undefined,
     sampler: p.Sampler, scheduler: p['Schedule type'],
     steps: num(p.Steps), cfg: num(p['CFG scale']), seed: p.Seed, size: p.Size,
@@ -222,4 +227,22 @@ export function genInfo(raw: string | undefined): GenInfo | null {
 export function infoLine(i: GenInfo): string {
   return [i.model, i.steps && i.steps + '步', i.cfg != null && 'CFG ' + i.cfg, i.sampler && i.sampler + (i.scheduler ? ' / ' + i.scheduler : ''),
     i.size, i.seed && 'seed ' + i.seed, i.denoise != null && i.denoise < 1 && '重绘 ' + i.denoise].filter(Boolean).join(' · ')
+}
+
+// ---- Civitai links ----
+// 蓝站 civitai.com (全年龄) / 红站 civitai.red (含 18+). File names rarely equal the
+// Civitai title, so: user-bound link > search by file hash (exact) > search by cleaned name.
+export const CIVITAI_HOST = { blue: 'https://civitai.com', red: 'https://civitai.red' } as const
+/** "hanabi_v2-000012_fp16" → "hanabi" : drop version / epoch / precision / pruned suffixes. */
+export function civitaiQuery(name: string): string {
+  let s = name.replace(/^#/, '').replace(/\.(safetensors|ckpt|pt)$/i, '')
+  for (let i = 0; i < 3; i++)
+    s = s.replace(/[-_ .]+(fp16|fp32|bf16|fp8\w*|pruned|ema(only)?|noema|nsfw|sfw|xl|sdxl|sd15|illu\w*|pony|noob\w*|lora|lyco|locon|\d{3,}|e\d+|ep\d+|step\d+|v\d+(\.\d+)*\w?)$/i, '')
+  return s.replace(/[_]+/g, ' ').trim() || name
+}
+export function civitaiUrl(o: { name: string; hash?: string; site: 'blue' | 'red'; links?: Record<string, string> }): string {
+  const bound = o.links?.[o.name]
+  if (bound) return bound
+  const q = o.hash && o.hash.length >= 8 ? o.hash : civitaiQuery(o.name)
+  return `${CIVITAI_HOST[o.site]}/search/models?query=${encodeURIComponent(q)}`
 }
