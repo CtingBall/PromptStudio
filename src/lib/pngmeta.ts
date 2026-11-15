@@ -1,10 +1,61 @@
 // Read generation parameters embedded in PNG text chunks (A1111/Forge "parameters",
 // ComfyUI "prompt" JSON, NovelAI "Description"/"Comment").
+// JPEG / WebP: WebUI and Civitai put the same "parameters" text into EXIF UserComment.
+export function exifUserComment(buf: Uint8Array): string {
+  let tiff = -1
+  if (buf[0] === 0xff && buf[1] === 0xd8) { // JPEG: walk segments to APP1 "Exif\0\0"
+    let p = 2
+    while (p + 4 < buf.length && buf[p] === 0xff) {
+      const m = buf[p + 1], len = (buf[p + 2] << 8) | buf[p + 3]
+      if (m === 0xe1 && buf[p + 4] === 0x45 && buf[p + 5] === 0x78 && buf[p + 6] === 0x69 && buf[p + 7] === 0x66) { tiff = p + 10; break }
+      if (m === 0xda) break
+      p += 2 + len
+    }
+  } else if (String.fromCharCode(...buf.subarray(0, 4)) === 'RIFF' && String.fromCharCode(...buf.subarray(8, 12)) === 'WEBP') {
+    let p = 12
+    while (p + 8 <= buf.length) {
+      const id = String.fromCharCode(...buf.subarray(p, p + 4))
+      const len = buf[p + 4] | (buf[p + 5] << 8) | (buf[p + 6] << 16) | (buf[p + 7] << 24)
+      if (id === 'EXIF') { tiff = p + 8; if (String.fromCharCode(...buf.subarray(tiff, tiff + 4)) === 'Exif') tiff += 6; break }
+      p += 8 + len + (len & 1)
+    }
+  }
+  if (tiff < 0 || tiff + 8 > buf.length) return ''
+  const le = buf[tiff] === 0x49
+  const u16 = (o: number) => le ? buf[tiff + o] | (buf[tiff + o + 1] << 8) : (buf[tiff + o] << 8) | buf[tiff + o + 1]
+  const u32 = (o: number) => le ? (u16(o) | (u16(o + 2) << 16)) >>> 0 : ((u16(o) << 16) | u16(o + 2)) >>> 0
+  const find = (ifd: number, tag: number): [number, number] | null => {
+    if (ifd + 2 > buf.length - tiff) return null
+    const n = u16(ifd)
+    for (let i = 0; i < n; i++) {
+      const e = ifd + 2 + i * 12
+      if (u16(e) === tag) return [u32(e + 4), u32(e + 8)] // count, value/offset
+    }
+    return null
+  }
+  const exif = find(u32(4), 0x8769)
+  if (!exif) return ''
+  const uc = find(exif[1], 0x9286)
+  if (!uc || uc[0] <= 8) return ''
+  const start = tiff + uc[1], data = buf.subarray(start + 8, start + uc[0])
+  const head = String.fromCharCode(...buf.subarray(start, start + 7))
+  if (head.startsWith('UNICODE')) {
+    // piexif writes UTF-16BE; some tools write LE — pick the one with fewer zero high bytes in front
+    const be = data[0] === 0 && data[1] !== 0
+    return new TextDecoder(be ? 'utf-16be' : 'utf-16le').decode(data).replace(/\0+$/, '')
+  }
+  return new TextDecoder('utf-8').decode(data).replace(/\0+$/, '')
+}
+
 export async function readPngText(file: File): Promise<Record<string, string>> {
   const out: Record<string, string> = {}
   const buf = new Uint8Array(await file.arrayBuffer())
   const sig = [137, 80, 78, 71, 13, 10, 26, 10]
-  if (buf.length < 8 || sig.some((b, i) => buf[i] !== b)) return out
+  if (buf.length < 8 || sig.some((b, i) => buf[i] !== b)) {
+    const c = exifUserComment(buf).trim()
+    if (c) out[c.startsWith('{') ? 'prompt' : 'parameters'] = c
+    return out
+  }
   const dv = new DataView(buf.buffer, buf.byteOffset, buf.byteLength)
   const dec = new TextDecoder('utf-8')
   const latin = new TextDecoder('latin1')

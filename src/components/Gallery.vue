@@ -85,6 +85,7 @@ const usage = computed(() => {
 async function copyText(t: string, what: string) {
   try { await navigator.clipboard.writeText(t); emit('toast', '已复制' + what) } catch { emit('toast', '复制失败') }
 }
+const civSearch = (q: string) => 'https://civitai.com/search/models?query=' + encodeURIComponent(q.replace(/^#/, ''))
 const curMeta = computed(() => (cur.value?.meta ? metaOf(cur.value.meta) : null))
 function key(e: KeyboardEvent) {
   if (view.value < 0) return
@@ -138,6 +139,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', key))
             <button class="ghost sm" @click="view = (view + 1) % shots.length">→</button>
             <button class="ghost sm" @click="view = -1">✕</button>
           </div>
+          <a v-if="/^https:\/\/civitai\./.test(cur.note || '')" :href="cur.note" target="_blank" class="muted" style="font-size: 12px">🌐 C站原图页面</a>
           <textarea v-model="cur.note" class="note-box" rows="3" placeholder="备注：模型 / LoRA / 种子 / 效果…" @change="touch(set)" />
           <button class="primary" @click="emit('review', cur.id); view = -1">✨ AI 对比诊断并给修正版</button>
           <button @click="emit('reverse', cur.id); view = -1">✨ 用这张图反推新提示词组</button>
@@ -147,9 +149,9 @@ onBeforeUnmount(() => window.removeEventListener('keydown', key))
           <div v-if="curInfo" class="gen-info">
             <div class="muted" style="font-size: 12px">生成信息（{{ curInfo.source }}）</div>
             <dl>
-              <template v-if="curInfo.model"><dt>模型</dt><dd>🧠 {{ curInfo.model }}</dd></template>
+              <template v-if="curInfo.model"><dt>模型</dt><dd><a :href="civSearch(curInfo.model)" target="_blank" title="在 C站搜索这个模型">🧠 {{ curInfo.model }}</a></dd></template>
               <template v-if="curInfo.vae"><dt>VAE</dt><dd>{{ curInfo.vae }}</dd></template>
-              <template v-if="curInfo.loras.length"><dt>LoRA</dt><dd><span v-for="l in curInfo.loras" :key="l.name" class="pill lora-pill">🧩 {{ l.name }}<small v-if="l.weight != null"> {{ l.weight }}</small></span></dd></template>
+              <template v-if="curInfo.loras.length"><dt>LoRA</dt><dd><a v-for="l in curInfo.loras" :key="l.name" class="pill lora-pill" :href="civSearch(l.name)" target="_blank" title="在 C站搜索这个 LoRA">🧩 {{ l.name }}<small v-if="l.weight != null"> {{ l.weight }}</small></a></dd></template>
               <template v-if="curInfo.sampler"><dt>采样器</dt><dd>{{ curInfo.sampler }}<span v-if="curInfo.scheduler" class="muted"> / {{ curInfo.scheduler }}</span></dd></template>
               <template v-if="curInfo.steps"><dt>步数</dt><dd>{{ curInfo.steps }}</dd></template>
               <template v-if="curInfo.cfg != null"><dt>CFG</dt><dd>{{ curInfo.cfg }}</dd></template>

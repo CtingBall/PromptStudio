@@ -4,7 +4,7 @@ import { ref, computed } from 'vue'
 import { doc } from '../lib/store'
 import { CATEGORIES, RATING_LABEL, type Category } from '../lib/types'
 import { imgSrc, imageCache } from '../lib/imagedb'
-import { exportSets, readFiles, applyImport, type ImageMode, type Candidate, type ConflictMode } from '../lib/transfer'
+import { exportSets, readFiles, readCivitai, applyImport, type ImageMode, type Candidate, type ConflictMode } from '../lib/transfer'
 
 const props = defineProps<{ mode: 'export' | 'import'; preselect?: string[]; current?: string }>()
 const emit = defineEmits<{ (e: 'close'): void; (e: 'toast', msg: string): void; (e: 'select', id: string): void }>()
@@ -58,6 +58,18 @@ const errors = ref<string[]>([])
 const conflict = ref<ConflictMode>('copy')
 const hover = ref(false)
 const fileEl = ref<HTMLInputElement>()
+const civText = ref('')
+const civProg = ref('')
+async function loadCivitai() {
+  if (!civText.value.trim() || busy.value) return
+  busy.value = true
+  try {
+    const r = await readCivitai(civText.value, (d, t) => (civProg.value = `${d}/${t}`))
+    cands.value.push(...r.list)
+    errors.value.push(...r.errors)
+    if (r.list.length) civText.value = ''
+  } finally { busy.value = false; civProg.value = '' }
+}
 async function load(files: FileList | File[] | null | undefined) {
   if (!files?.length) return
   busy.value = true
@@ -144,8 +156,12 @@ async function doImport() {
           @drop.prevent="hover = false; load($event.dataTransfer?.files)">
           {{ busy ? '读取中…' : '点击选择或拖入文件（可多选）' }}
           <div class="muted" style="font-size: 12px; margin-top: 4px">
-            支持：本工具导出的 .json（含返图）· .txt 提示词 · 带生成参数的 PNG（每张图建一组并作为返图）
+            支持：本工具导出的 .json（含返图）· .txt 提示词 · 带生成参数的 PNG / JPG / WebP（每张图建一组并作为返图）
           </div>
+        </div>
+        <div class="row civ-row">
+          <textarea v-model="civText" rows="2" placeholder="🌐 粘贴 C站图片链接导入（可多个，一行一个），如 https://civitai.com/images/123456 ——会把提示词、参数、模型/LoRA 和图片一起导入" style="flex: 1" />
+          <button class="primary" :disabled="busy || !civText.trim()" @click="loadCivitai">{{ civProg ? '读取 ' + civProg : '从 C站导入' }}</button>
         </div>
         <input ref="fileEl" type="file" multiple accept=".json,.txt,image/*" style="display: none"
           @change="load(($event.target as HTMLInputElement).files); ($event.target as HTMLInputElement).value = ''" />

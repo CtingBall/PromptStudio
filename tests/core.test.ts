@@ -133,3 +133,28 @@ test('promptFormat guesses writing style', () => {
   assert.equal(promptFormat([t('1girl'), t('solo'), t('masterpiece'), t('she is looking back over her shoulder')]), 'mixed')
   assert.equal(promptFormat([t('a quiet street', 'Caption'), t('1girl')]), 'gbc')
 })
+
+test('civitai: ids and meta → parameters', async () => {
+  const { civitaiImageIds, metaToParameters } = await import('../src/lib/civitai.ts')
+  assert.deepEqual(civitaiImageIds('https://civitai.com/images/12345?x=1\nhttps://civitai.com/images/678'), ['12345', '678'])
+  const t = metaToParameters({ prompt: '1girl', negativePrompt: 'bad', steps: 25, cfgScale: 5, seed: 9, Size: '832x1216', Model: 'noobai',
+    resources: [{ type: 'lora', name: 'hanabi', weight: 0.8 }] })
+  const { genInfo } = await import('../src/lib/pngmeta.ts')
+  const i = genInfo(t)!
+  assert.equal(i.model, 'noobai'); assert.equal(i.steps, 25); assert.equal(i.loras[0].name, 'hanabi'); assert.equal(i.loras[0].weight, 0.8)
+})
+
+test('exif UserComment (JPEG)', async () => {
+  const { exifUserComment } = await import('../src/lib/pngmeta.ts')
+  const text = 'a cat\nSteps: 20'
+  const uc = [...Buffer.from('UNICODE\0'), ...Buffer.from(text, 'utf16le').swap16()]
+  // TIFF LE: header, IFD0 with ExifIFD pointer, Exif IFD with UserComment
+  const tiff: number[] = [0x49, 0x49, 42, 0, 8, 0, 0, 0]
+  const w16 = (v: number) => [v & 255, v >> 8], w32 = (v: number) => [v & 255, (v >> 8) & 255, (v >> 16) & 255, v >>> 24]
+  tiff.push(...w16(1), ...w16(0x8769), ...w16(4), ...w32(1), ...w32(26), ...w32(0))        // IFD0 @8 → exif @26
+  tiff.push(...w16(1), ...w16(0x9286), ...w16(7), ...w32(uc.length), ...w32(44), ...w32(0)) // exif IFD @26 → data @44
+  tiff.push(...uc)
+  const app1 = [...Buffer.from('Exif\0\0'), ...tiff]
+  const jpg = new Uint8Array([0xff, 0xd8, 0xff, 0xe1, (app1.length + 2) >> 8, (app1.length + 2) & 255, ...app1, 0xff, 0xd9])
+  assert.equal(exifUserComment(jpg), text)
+})

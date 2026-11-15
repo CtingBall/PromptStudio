@@ -7,6 +7,7 @@ import { uid, tagsFromPrompt, promptKey } from './tags'
 import { getImage, putImage } from './imagedb'
 import { fileToDataUrl } from './image'
 import { readPngText, parseGenMeta } from './pngmeta'
+import { civitaiImageIds, fetchCivitaiImage, fetchImageFile, civitaiRating } from './civitai'
 
 export type ImageMode = 'all' | 'cover' | 'none'
 
@@ -100,6 +101,36 @@ function normalize(data: any): Bundle {
   throw new Error('不是千夏绘卷的导出文件')
 }
 
+/** Import Civitai images by link: each image becomes a set with its prompt, params and the image as a result shot. */
+export async function readCivitai(text: string, onProgress?: (done: number, total: number) => void): Promise<{ list: Candidate[]; errors: string[] }> {
+  const ids = civitaiImageIds(text)
+  const list: Candidate[] = []
+  const errors: string[] = []
+  if (!ids.length) return { list, errors: ['没找到 C站图片链接，格式如 https://civitai.com/images/123456'] }
+  const keys = new Map(doc.sets.map((s) => [promptKey(s.tags, s.negative), s.name]))
+  let done = 0
+  for (const id of ids) {
+    try {
+      const it = await fetchCivitaiImage(id)
+      const meta = parseGenMeta({ parameters: it.meta })
+      if (!meta?.positive) { errors.push(`图片 ${id}：作者没有公开生成参数`); continue }
+      const s = newSet('C站 ' + id)
+      s.tags = tagsFromPrompt(meta.positive, lookup)
+      s.negative = meta.negative
+      s.category = civitaiRating(it.nsfw)
+      s.labels = ['C站']
+      const imgId = uid('img')
+      const file = await fetchImageFile(it.url, id + '.jpg')
+      s.shots = [{ id: imgId, at: Date.now(), meta: it.meta, note: it.page }]
+      const k = promptKey(s.tags, s.negative)
+      list.push({ set: s, images: { [imgId]: await fileToDataUrl(file, 1600, 0.88) }, source: it.page, conflict: false, dupOf: keys.get(k), pick: true })
+    } catch (e: any) {
+      errors.push(`图片 ${id}：${e?.message || e}`)
+    } finally { onProgress?.(++done, ids.length) }
+  }
+  return { list, errors }
+}
+
 /** Parse dropped/picked files: .json exports, .txt prompts, or images with generation metadata. */
 export async function readFiles(files: File[]): Promise<{ list: Candidate[]; dict: Record<string, string>; errors: string[] }> {
   const list: Candidate[] = []
@@ -121,7 +152,7 @@ export async function readFiles(files: File[]): Promise<{ list: Candidate[]; dic
     try {
       if (f.type.startsWith('image/')) {
         const meta = parseGenMeta(await readPngText(f).catch(() => ({})))
-        if (!meta?.positive) { errors.push(`${f.name}：图片里没有生成参数`); continue }
+        if (!meta?.positive) { errors.push(`${f.name}：图片里没有生成参数（PNG / JPG / WebP 均可读，但被网站压缩过的图通常已丢失参数）`); continue }
         const s = newSet(stem(f))
         s.tags = tagsFromPrompt(meta.positive, lookup)
         s.negative = meta.negative

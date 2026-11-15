@@ -54,9 +54,29 @@ function llmForwarder(): Plugin {
   }
 }
 
+// Dev twin of the Electron /net/get route (Civitai only).
+function netForwarder(): Plugin {
+  const HOSTS = /(^|\.)(civitai\.com|civitai\.green)$/i
+  return {
+    name: 'net-forwarder',
+    configureServer(server) {
+      server.middlewares.use('/net/get', async (req, res) => {
+        try {
+          const target = new URL(new URL(req.url || '', 'http://x').searchParams.get('url') || '')
+          if (target.protocol !== 'https:' || !HOSTS.test(target.hostname)) { res.statusCode = 403; res.end('host not allowed'); return }
+          const r = await fetch(target)
+          res.statusCode = r.status
+          res.setHeader('Content-Type', r.headers.get('content-type') || 'application/octet-stream')
+          res.end(Buffer.from(await r.arrayBuffer()))
+        } catch (e: any) { res.statusCode = 502; res.end(JSON.stringify({ error: String(e?.message || e) })) }
+      })
+    },
+  }
+}
+
 export default defineConfig({
   define: { __APP_VERSION__: JSON.stringify(pkgVersion) },
-  plugins: [vue(), llmForwarder()],
+  plugins: [vue(), llmForwarder(), netForwarder()],
   // Ignore editors' atomic-save temp files; watching them crashed dev with EBUSY.
   server: { port: 5188, watch: { ignored: ['**/*.tmpdir/**', '**/*.tmp'] } },
 })

@@ -393,3 +393,7 @@ textarea { min-height: 2.6em; max-height: 60vh; field-sizing: content; }
 .side-list.mode-card .set-item > input[type=checkbox] { top: 34px; }
 /* with overlays the corner preview moves up to clear the layout pill */
 .side-list.mode-card .thumb-corner { bottom: 30px; }
+
+.civ-row { margin-top: 8px; gap: 6px; align-items: stretch; }
+.civ-row textarea { min-height: 2.6em; }
+a.pill { text-decoration: none; }

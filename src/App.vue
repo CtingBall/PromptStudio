@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { toParameters } from './lib/civitai'
 import { useDragSelect } from './lib/dragSelect'
 import { ref, computed, watch, onMounted } from 'vue'
 import { autoBackupOnUpdate, backupAll, APP_VERSION, IS_DESKTOP } from './lib/autobackup'
@@ -227,6 +228,11 @@ async function retranslateAll() {
   }
 }
 
+async function copyParams() {
+  if (!current.value) return
+  try { await navigator.clipboard.writeText(toParameters(current.value, promptText(current.value, false))); flash('已复制 WebUI / C站参数格式（带负向和返图里的步数、种子等）') }
+  catch (e: any) { flash('复制失败：' + (e?.message || e)) }
+}
 async function copyPrompt(headers = true) {
   if (!current.value) return
   try {
@@ -664,6 +670,7 @@ function clampMaxImages() {
             <div class="btn-group">
               <button @click="copyPrompt(true)">复制(分段)</button>
               <button @click="copyPrompt(false)">复制(单行)</button>
+              <button title="A1111 parameters 格式：正向 + Negative prompt + Steps/Seed…，WebUI 可直接「读取参数」，C站发图可粘贴" @click="copyParams">复制(WebUI/C站)</button>
             </div>
             <button :class="tagMode ? 'primary' : ''" @click="tagMode = !tagMode; tagSel = []">
               {{ tagMode ? '退出批量' : '批量编辑' }}</button>
