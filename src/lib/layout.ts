@@ -165,7 +165,8 @@ export function boxesToRegions(boxes: LayoutBox[], grid = 0, old?: Region[], ids
     else { r.text = b.desc; if (b.kind === 'char') { r.cid = b.cid; r.outfit = b.outfit || prev?.outfit } }
     if (b.tags?.length) r.tags = b.tags.join(', ')
     else if (prev?.tags) r.tags = prev.tags
-    if (b.label && b.kind !== 'char') r.label = b.label
+    // char boxes use the character's trigger/name when set; the label is the fallback ("girl")
+    if (b.label) r.label = b.label
     return r
   })
   if (ids) { ids.length = 0; ids.push(...regs.map((r) => r.id)) }
