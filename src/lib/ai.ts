@@ -1,4 +1,5 @@
 // Higher-level AI actions on an existing prompt set.
+import { skillContext } from './skills'
 import { chat, extractJson } from './grok'
 import { buildGenSystem, parseGen, translateTags, type GenResult } from './translate'
 import { settings, remember, touch } from './store'
@@ -39,7 +40,7 @@ ${prompt}
 修改要求：${instruction}
 
 按要求修改后，输出完整的新提示词（全部分段，不只是改动部分）。没被要求修改的内容尽量保持原样。` + layoutBlock(ctx, '画框也按修改要求同步调整（如换服装要改角色框描述）。')
-  const reply = await chat({ task: 'edit', model: o.model, temperature, system: buildGenSystem(o.rules, o.ban, o.format), user, images })
+  const reply = await chat({ task: 'edit', model: o.model, temperature, system: buildGenSystem(o.rules, o.ban, o.format) + await skillContext(instruction + '\n' + prompt), user, images })
   return parseGen(reply, o.ban)
 }
 
@@ -92,7 +93,7 @@ export interface ReviewResult { score: number; summary: string; missing: string[
 // Compare a result image against its prompt; returns a report plus a fixed prompt.
 export async function aiReview(prompt: string, negative: string, image: string, ctx?: LayoutCtx): Promise<ReviewResult> {
   const o = genOpts()
-  const system = buildGenSystem(o.rules, o.ban, o.format) + `
+  const system = buildGenSystem(o.rules, o.ban, o.format) + await skillContext(prompt) + `
 
 本次任务是「返图诊断」：对比附图（用这组提示词生成的结果）和提示词。
 在上面的 JSON 里额外加入字段：
@@ -117,7 +118,7 @@ sections 和 negative 给出修正后的完整提示词：对没出现的元素�
 // Critique a prompt with no image: score, issues, and a fixed prompt.
 export async function aiCritique(prompt: string, negative: string, ctx?: LayoutCtx): Promise<ReviewResult> {
   const o = genOpts()
-  const system = buildGenSystem(o.rules, o.ban, o.format) + `
+  const system = buildGenSystem(o.rules, o.ban, o.format) + await skillContext(prompt) + `
 
 本次任务是「提示词诊断」：审阅下面这组提示词本身（没有图）。
 在上面的 JSON 里额外加入字段：

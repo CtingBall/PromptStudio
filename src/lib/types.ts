@@ -84,6 +84,7 @@ export interface Settings {
   civitaiLinks?: Record<string, string>      // model/LoRA file name → the user's chosen Civitai page
   genFormat: PromptFormat // how generated prompts are written
   routes: Partial<Record<AiTask, AiRoute>> // per-feature model override; empty fields fall back to the main AI
+  skills?: string[]       // enabled built-in skills (public/skills); relevant passages go into AI generation prompts
 }
 
 export type PromptFormat = 'tags' | 'natural' | 'mixed' | 'gbc'
@@ -126,6 +127,7 @@ export const DEFAULT_SETTINGS: Settings = {
   civitaiLinks: {},
   genFormat: 'tags',
   routes: {},
+  skills: [],
 }
 
 // Section order used for generation (matches the user's template).

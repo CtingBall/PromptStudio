@@ -1,3 +1,4 @@
+import { skillContext } from './skills'
 import { chat, extractJson } from './grok'
 import { GEN_SECTIONS, type Region } from './types'
 import { sanitizeIdentity } from './tags'
@@ -231,7 +232,7 @@ export async function generateSet(
   opts: { temperature?: number; rules?: string; banIdentity?: boolean; format?: PromptFormat } = {},
 ): Promise<GenResult> {
   const banIdentity = opts.banIdentity ?? true
-  const system = buildGenSystem(opts.rules || '', banIdentity, opts.format)
+  const system = buildGenSystem(opts.rules || '', banIdentity, opts.format) + await skillContext(input.text || '')
   const temperature = opts.temperature ?? (input.mode === 'rewrite' ? 0.3 : 0.7)
   const reply = await chat({ task: 'generate', model, temperature, system, user: buildUser(input), images: input.images })
   return parseGen(reply, banIdentity)

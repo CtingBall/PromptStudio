@@ -3,6 +3,13 @@ import { FORMAT_LABEL } from '../lib/types'
 const FORMAT_TIP = { tags: 'SD / NovelAI / Illustrious / Anima', natural: 'MOSS / Flux / Qwen-Image 等', mixed: '两类模型都想兼顾时', gbc: 'MOSS-Image-heal 等 KohakuGBC 训练的模型，会自动带画框' } as const
 import { ref, reactive, computed } from 'vue'
 import { generateSet, type GenSection, type GenMode } from '../lib/translate'
+import { listSkills, type SkillInfo } from '../lib/skills'
+const skillList = ref<SkillInfo[]>([])
+listSkills().then((l) => (skillList.value = l))
+function toggleSkill(id: string) {
+  const cur = doc.settings.skills ?? []
+  doc.settings.skills = cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]
+}
 import { doc, settings } from '../lib/store'
 import { DEFAULT_GEN_PREFIX, DEFAULT_GEN_NEGATIVE, type Region, type Char } from '../lib/types'
 import { fileToDataUrl } from '../lib/image'
@@ -219,6 +226,14 @@ async function run() {
           <button v-for="(l, f) in FORMAT_LABEL" :key="f" :class="{ on: doc.settings.genFormat === f }" @click="doc.settings.genFormat = f">{{ l }}</button>
         </div>
         <span class="muted fmt-tip">{{ FORMAT_TIP[doc.settings.genFormat] }}（区别见 📖 手册）</span>
+      </div>
+
+      <div v-if="skillList.length" class="row wrap" style="margin-top: 10px">
+        <label class="muted">内置技能</label>
+        <div class="btn-group">
+          <button v-for="k in skillList" :key="k.id" :class="{ on: (doc.settings.skills ?? []).includes(k.id) }" :title="k.desc" @click="toggleSkill(k.id)">📚 {{ k.name }}</button>
+        </div>
+        <span class="muted fmt-tip">开启后 AI 生成/修改/诊断时会按主题检索相关段落作为参考</span>
       </div>
 
       <div class="row" style="margin-top: 10px">
