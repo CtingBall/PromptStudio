@@ -24,22 +24,59 @@ export function regionsToElements(regions: Region[], chars?: Char[]): ComfyEleme
 
 // KohakuGBC "gbc.soft" text (MOSS-Image-heal): header, image caption, tags, one line per box
 // with [y1,x1,y2,x2] in pixels from the canvas centre.
-export function gbcText(s: PromptSet): string {
+// Same layout as the training captions (lora-dataset-studio gbc_caption.py):
+//   header / # [image] caption / tags: global / - [label] [box] desc + "  tags:" / - relation [a] [b]: … / tail
+export function gbcText(s: PromptSet, tail = ''): string {
   const W = s.canvas?.w || 1024, H = s.canvas?.h || 1024
   const regs = s.regions || []
+  const q = (t: { en: string; weight: number }) => (t.weight && t.weight !== 1 ? `(${t.en}:${t.weight})` : t.en)
   const cap = s.tags.filter((t) => t.section === 'Caption').map((t) => t.en).join(' ').trim()
-  const tags = s.tags.filter((t) => t.section !== 'Caption').map((t) => t.en).filter(Boolean)
+  const tags = s.tags.filter((t) => t.section !== 'Caption' && t.en).map(q)
   const lines = [`<gbc bbox=yxyx space=abs_centralized canvas=${W}x${H}>`, `# [image] ${cap || tags.slice(0, 12).join(', ')}`]
   if (tags.length) lines.push('tags: ' + tags.join(', '))
-  regs.forEach((r) => {
+  const labels = regs.map((r) => gbcLabel(r, s.chars))
+  // repeated labels get numbers so relations stay unambiguous
+  const seen: Record<string, number> = {}
+  const dup = (l: string) => labels.filter((x) => x === l).length > 1
+  const names = labels.map((l) => (dup(l) ? `${l} ${(seen[l] = (seen[l] || 0) + 1)}` : l))
+  regs.forEach((r, i) => {
     const b = [Math.floor(r.y * H) - (H >> 1), Math.floor(r.x * W) - (W >> 1),
       Math.ceil((r.y + r.h) * H) - (H >> 1), Math.ceil((r.x + r.w) * W) - (W >> 1)]
-    const c = s.chars?.find((x) => x.id === r.cid)
-    const label = r.kind === 'text' ? 'text' : r.kind === 'char' ? (c?.trigger || c?.name || 'character') : (r.text || 'object').split(/[,.]/)[0].split(/\s+/).slice(0, 3).join(' ')
-    const desc = r.kind === 'text' ? `${boxDesc(r, regs, s.chars)}, text "${r.text || ''}"` : boxDesc(r, regs, s.chars)
-    lines.push(`- [${label}] [${b.join(',')}] ${desc}`.trimEnd())
+    lines.push(`- [${names[i]}] [${b.join(',')}] ${gbcDesc(r, regs, s.chars)}`.trimEnd())
+    const bt = gbcBoxTags(r, s.chars)
+    if (bt) lines.push('  tags: ' + bt)
   })
+  for (const rel of s.relations || []) {
+    const ns = rel.ids.map((id) => names[regs.findIndex((r) => r.id === id)]).filter(Boolean)
+    if (ns.length >= 2 && rel.text.trim()) lines.push(`- relation ${ns.map((n) => `[${n}]`).join(' ')}: ${rel.text.trim()}`)
+  }
+  if (tail.trim()) lines.push(tail.trim())
   return lines.join('\n')
+}
+
+function gbcLabel(r: Region, chars?: Char[]): string {
+  if (r.kind === 'text') return 'text'
+  if (r.kind === 'char') { const c = chars?.find((x) => x.id === r.cid); return c?.trigger || c?.name || r.label || 'character' }
+  return r.label || (r.text || 'object').split(/[,.]/)[0].split(/\s+/).slice(0, 3).join(' ').toLowerCase()
+}
+
+// char box: fixed guide + per-box outfit override + the full description (outfit already inside)
+function gbcDesc(r: Region, all: Region[], chars?: Char[]): string {
+  if (r.kind === 'text') {
+    const d = boxDesc(r, all, chars).trim()
+    const q = `text "${r.text || ''}"`
+    return !d ? q : /[.!?]$/.test(d) ? `${d} The ${q}.` : `${d}, ${q}`
+  }
+  if (r.kind !== 'char') return r.text
+  const c = chars?.find((x) => x.id === r.cid)
+  const outfit = (r.outfit || '').trim()
+  return [c?.guide, outfit ? (/^(wearing|dressed|in )/i.test(outfit) ? outfit : 'wearing ' + outfit) : '', (r.text || '').trim()].filter(Boolean).join(', ')
+}
+
+function gbcBoxTags(r: Region, chars?: Char[]): string {
+  const c = r.kind === 'char' ? chars?.find((x) => x.id === r.cid) : undefined
+  const list = [c?.trigger, ...(r.tags || '').split(',')].map((t) => (t || '').trim()).filter(Boolean)
+  return Array.from(new Map(list.map((t) => [t.toLowerCase(), t])).values()).join(', ')
 }
 
 // "1, 3" — 1-based numbers of character boxes, as MOSSImageLayoutPrompt.character_boxes expects

@@ -1,7 +1,7 @@
 // Layout spec shared by every AI action that writes bbox layouts
 // (one-click auto layout, layout mode, AI edit / variants / review).
 // Tuned for MOSS-Image + ComfyUI CreateBoundingBoxes → MOSSImageLayoutPrompt.
-import type { Char, Region } from './types'
+import type { Char, Region, Relation } from './types'
 
 export const uidR = () => 'r' + Math.random().toString(36).slice(2, 9)
 
@@ -26,8 +26,11 @@ export function parseChars(raw: string): Char[] {
   return out
 }
 
-export function charsText(chars: Char[]): string {
+export function charsText(chars: Char[], gbc = false): string {
   if (!chars.length) return ''
+  if (gbc) return `画面角色（用 cid 区分）：\n` + chars.map((c) =>
+    `- ${c.id}：${c.name}${c.trigger ? `（触发词 ${c.trigger}）` : ''}${c.guide ? `，固定特征：${c.guide}` : ''}${c.outfit ? `，默认服装：${c.outfit}` : ''}`).join('\n') +
+    `\n每个角色一个 char 框，cid 填角色 id。触发词和固定特征由程序加在框标签上，desc/tags 里不写触发词、名字和固定特征，也不补发色、瞳色等外貌。服装要写进框的 desc 和 tags：主题没要求换装就按默认服装写全，要求换装就写新服装。提到别的角色用位置称呼（如 "the girl on the right"）。`
   return `画面角色（用 cid 区分）：\n` + chars.map((c) =>
     `- ${c.id}：${c.name}${c.trigger ? `（触发词 ${c.trigger}）` : ''}${c.guide ? `，固定特征：${c.guide}` : ''}${c.outfit ? `，默认服装：${c.outfit}` : '，未设服装'}`).join('\n') +
     `\n角色框的触发词和固定特征由程序自动加在开头，你在 desc 里不要写触发词、名字和固定特征，也不要补发色、瞳色等外貌；只写这个框里角色在做什么。触发词不要写进 sections。\n服装：默认服装也由程序自动加；只有主题要求换装（或这个角色没设服装、需要指定）时，才在该角色框的 outfit 字段写新服装（英文短语），否则 outfit 留空，desc 里也不写衣服。`
@@ -43,6 +46,21 @@ export const LAYOUT_SPEC = `【画框布局规范】（MOSS-Image 布局：每�
 4. 坐标：画布比例 0–1，(0,0) 左上角，x/y 是框左上角，w/h 是宽高。主体要撑满画面。
 5. 顺序：先 obj 和 char，text 放最后。`
 
+// GBC (KohakuGBC graph caption): global = caption + global tags (no box); local = one box per
+// person / object / text, each box complete (its own description + tags); relations link boxes.
+export const GBC_SPEC = `【GBC 规范】分「全局」和「局部」两层，所有画面内容都要落到其中一层，不能丢：
+全局（不画框）：caption + sections。写整张图共有的东西：人数、镜头角度与取景、构图、场景与背景（天空、房间、街道等大块区域）、光照、色调、画风、氛围。人物自己的服装、动作、表情不写在全局。
+局部（画框 layout）：画面里每个人物、每个重要物品、每段画出来的文字各一个框；背景不做框。
+- 人物框 kind "char"：desc 用 2–4 句完整英文写全这个人：动作与姿势、手在做什么、表情与视线（看向谁）、服装从上到下、配饰、手持物、和别人/物品的互动。tags 写这个人的英文标签（姿势、表情、服装每个部件、配饰、手持物），8–25 个。
+- 物品框 kind "obj"：desc 1–2 句写它的样子、材质、颜色、状态；tags 3–10 个。
+- 文字框 kind "text"：text 是画出来的原文，desc 写字体/气泡样式和位置，speaker 写说话人 cid。
+- 同一个东西只写在一处：属于某个人的东西（衣服、手里的伞）写进这个人的框，不再单独做框，除非它很大或离开了人。
+relations：1–4 条，写框之间的位置和互动，n 用框编号，如 {"n": [1, 2], "text": "the girl holds the umbrella over the boy"}。
+坐标：画布比例 0–1，(0,0) 左上角，x/y 是框左上角，w/h 是宽高；框要贴合物体，主体撑满画面。`
+
+export const GBC_SCHEMA = `"layout": [{"n": 1, "kind": "char|obj|text", "label": "英文短名词，如 girl / umbrella", "cid": "A", "speaker": "A", "x": 0, "y": 0, "w": 0, "h": 0, "desc": "...", "tags": ["..."], "text": "只有文字框才有"}],
+  "relations": [{"n": [1, 2], "text": "..."}]`
+
 export const LAYOUT_SCHEMA = `"layout": [{"n": 1, "kind": "char|obj|text", "cid": "A", "outfit": "只有换装时才写", "speaker": "A", "x": 0, "y": 0, "w": 0, "h": 0, "desc": "...", "text": "只有文字框才有"}]`
 
 // Existing boxes, for edit/review/layout-mode prompts.
@@ -50,9 +68,9 @@ export function layoutText(regions: Region[], canvas: { w: number; h: number }):
   const f = (n: number) => n.toFixed(2)
   const lines = regions.map((r, i) => {
     const k = r.kind || 'obj'
-    const extra = k === 'char' ? ` cid=${r.cid || '?'}${r.outfit ? ` outfit=${r.outfit}` : ''}` : k === 'text' ? ` speaker=${r.speaker || '无'} 文字「${r.text}」` : ''
+    const extra = k === 'char' ? ` cid=${r.cid || '?'}${r.outfit ? ` outfit=${r.outfit}` : ''}` : k === 'text' ? ` speaker=${r.speaker || '无'} 文字「${r.text}」` : r.label ? ` label=${r.label}` : ''
     const d = k === 'text' ? r.desc || '' : r.text
-    return `n=${i + 1} kind=${k}${extra} x=${f(r.x)} y=${f(r.y)} w=${f(r.w)} h=${f(r.h)}：${d || '（未写）'}`
+    return `n=${i + 1} kind=${k}${extra} x=${f(r.x)} y=${f(r.y)} w=${f(r.w)} h=${f(r.h)}：${d || '（未写）'}${r.tags ? `｜tags: ${r.tags}` : ''}`
   })
   return `画布 ${canvas.w}×${canvas.h}。现有画框：\n${lines.join('\n') || '（无）'}`
 }
@@ -60,6 +78,16 @@ export function layoutText(regions: Region[], canvas: { w: number; h: number }):
 export interface LayoutBox {
   n?: number; kind: 'obj' | 'char' | 'text'; cid?: string; outfit?: string; speaker?: string
   x: number; y: number; w: number; h: number; desc: string; text?: string
+  tags?: string[]; label?: string
+}
+
+// GBC relations: box numbers (1-based, as in the reply) + sentence
+export interface LayoutRel { n: number[]; text: string }
+export function parseRelations(list: unknown): LayoutRel[] {
+  return (Array.isArray(list) ? list : []).map((r: any) => ({
+    n: (Array.isArray(r?.n) ? r.n : Array.isArray(r?.labels) ? r.labels : []).map(Number).filter((v: number) => Number.isInteger(v) && v > 0),
+    text: String(r?.text ?? '').trim().slice(0, 400),
+  })).filter((r) => r.n.length >= 2 && r.text).slice(0, 8)
 }
 
 export function parseLayout(list: unknown): LayoutBox[] {
@@ -83,6 +111,9 @@ export function parseLayout(list: unknown): LayoutBox[] {
       outfit: kind === 'char' ? str(b?.outfit, 300) || undefined : undefined,
       speaker: kind === 'text' ? str(b?.speaker, 4).toUpperCase() || undefined : undefined,
       text: kind === 'text' ? str(b?.text, 200) : undefined,
+      tags: Array.isArray(b?.tags) ? b.tags.map((t: unknown) => str(t, 80)).filter(Boolean).slice(0, 40)
+        : typeof b?.tags === 'string' && b?.desc ? str(b.tags, 1200).split(/\s*,\s*/).filter(Boolean) : undefined,
+      label: str(b?.label, 40).replace(/[[\]]/g, '') || undefined,
     } as LayoutBox
   }).filter((b) => Number.isFinite(b.x) && b.w >= 0.02 && b.h >= 0.02 && (b.kind !== 'text' || b.text)
       && !(b.kind === 'obj' && b.w * b.h > 0.8)) // background boxes belong in tags
@@ -98,8 +129,14 @@ export function speakerBox(t: Region, all: Region[]): Region | undefined {
 }
 
 // Problems worth a warning before export
-export function checkLayout(all: Region[]): string[] {
+export function checkLayout(all: Region[], gbc = false): string[] {
   const out: string[] = []
+  if (gbc) all.forEach((r, i) => {
+    if (r.kind !== 'char') return
+    const words = (r.text || '').trim().split(/\s+/).filter(Boolean).length
+    const n = (r.tags || '').split(',').filter((t) => t.trim()).length
+    if (words < 12 || n < 5) out.push(`#${i + 1} 人物框内容偏少（描述 ${words} 词、标签 ${n} 个），服装/动作/表情可能没写全`)
+  })
   all.forEach((t, i) => {
     if (t.kind === 'text' && t.speaker && !speakerBox(t, all)) out.push(`#${i + 1}「${t.text}」的说话人 ${t.speaker} 没有角色框`)
   })
@@ -107,7 +144,13 @@ export function checkLayout(all: Region[]): string[] {
 }
 
 // Boxes → regions. keep=true keeps coords of existing regions matched by n (layout mode).
-export function boxesToRegions(boxes: LayoutBox[], grid = 0, old?: Region[]): Region[] {
+// GBC relations (box numbers of the reply) → relations by region id. ids[i] = region id of boxes[i].
+export function relsToRegions(rels: LayoutRel[], ids: string[]): Relation[] {
+  return rels.map((r) => ({ ids: r.n.map((n) => ids[n - 1]).filter(Boolean), text: r.text }))
+    .filter((r) => r.ids.length >= 2)
+}
+
+export function boxesToRegions(boxes: LayoutBox[], grid = 0, old?: Region[], ids?: string[]): Region[] {
   const sn = (v: number) => (grid ? Math.round(v * grid) / grid : v)
   const min = grid ? 1 / grid : 0.04
   const regs: Region[] = boxes.map((b) => {
@@ -120,8 +163,12 @@ export function boxesToRegions(boxes: LayoutBox[], grid = 0, old?: Region[]): Re
     const r: Region = { id: prev?.id || uidR(), x, y, w, h, kind: b.kind === 'obj' ? undefined : b.kind, text: '' }
     if (b.kind === 'text') { r.text = b.text || ''; r.desc = b.desc; r.speaker = b.speaker }
     else { r.text = b.desc; if (b.kind === 'char') { r.cid = b.cid; r.outfit = b.outfit || prev?.outfit } }
+    if (b.tags?.length) r.tags = b.tags.join(', ')
+    else if (prev?.tags) r.tags = prev.tags
+    if (b.label && b.kind !== 'char') r.label = b.label
     return r
   })
+  if (ids) { ids.length = 0; ids.push(...regs.map((r) => r.id)) }
   // order: chars/objs first, text boxes last (foreground)
   const rank = (r: Region) => (r.kind === 'text' ? 1 : 0)
   return regs.map((r, i) => [r, i] as const).sort((a, b) => rank(a[0]) - rank(b[0]) || a[1] - b[1]).map(([r]) => r)

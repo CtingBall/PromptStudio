@@ -11,10 +11,10 @@ function toggleSkill(id: string) {
   doc.settings.skills = cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]
 }
 import { doc, settings } from '../lib/store'
-import { DEFAULT_GEN_PREFIX, DEFAULT_GEN_NEGATIVE, type Region, type Char } from '../lib/types'
+import { DEFAULT_GEN_PREFIX, DEFAULT_GEN_NEGATIVE, DEFAULT_GBC_TAIL, type Region, type Char, type Relation } from '../lib/types'
 import { fileToDataUrl } from '../lib/image'
 import LayoutPanel from './LayoutPanel.vue'
-import { parseChars, boxesToRegions, checkLayout } from '../lib/layout'
+import { parseChars, boxesToRegions, checkLayout, relsToRegions } from '../lib/layout'
 
 export interface GenPayload {
   name: string
@@ -24,6 +24,7 @@ export interface GenPayload {
   regions?: Region[]
   canvas?: { w: number; h: number }
   chars?: Char[]
+  relations?: Relation[]
 }
 
 const props = defineProps<{ initialRaw?: string; initialMode?: GenMode }>()
@@ -82,6 +83,7 @@ function resetInject() {
   doc.settings.genPrefix = DEFAULT_GEN_PREFIX
   doc.settings.genNegative = DEFAULT_GEN_NEGATIVE
   doc.settings.genRules = ''
+  doc.settings.gbcTail = DEFAULT_GBC_TAIL
   doc.settings.banIdentity = true
 }
 
@@ -116,21 +118,24 @@ async function run() {
     removed.value = r.removed
     const neg = [...s.genNegative.split(',').map((t) => t.trim()).filter(Boolean), ...r.negative]
     let outRegions: Region[] | undefined
+    const ids: string[] = [] // region id of each reply box, for relations
     let outCanvas: { w: number; h: number } | undefined
     if (mode.value === 'layout' && regions.length) {
       // AI rewrites each box by spec; coords stay as drawn (matched by n)
-      outRegions = r.boxes.length ? boxesToRegions(r.boxes, 0, regions)
+      outRegions = r.boxes.length ? boxesToRegions(r.boxes, 0, regions, ids)
         : regions.map((g) => ({ ...g }))
       // keep boxes the AI forgot
       for (const g of regions) if (!outRegions.some((x) => x.id === g.id)) outRegions.push({ ...g })
       outCanvas = { ...canvas }
     } else if (useAuto.value && r.boxes.length) {
-      outRegions = boxesToRegions(r.boxes, autoGrid.value)
+      outRegions = boxesToRegions(r.boxes, autoGrid.value, undefined, ids)
       outCanvas = { w: SIZES[autoSize.value].w, h: SIZES[autoSize.value].h }
     } else if (useAuto.value) {
       err.value = '模型没给布局，已只生成提示词'
     }
-    const warn = outRegions ? checkLayout(outRegions) : []
+    const isGbc = s.genFormat === 'gbc'
+    const relations = outRegions && isGbc ? relsToRegions(r.relations, ids) : undefined
+    const warn = outRegions ? checkLayout(outRegions, isGbc) : []
     if (warn.length) window.dispatchEvent(new CustomEvent('ps:toast', { detail: '布局检查：' + warn.join('；') }))
     const nameSrc = r.name || mainText.value || (mode.value === 'layout' ? '布局' : '参考图生成')
     emit('apply', {
@@ -141,6 +146,7 @@ async function run() {
       regions: outRegions,
       canvas: outCanvas,
       chars: chars.value.length ? chars.value : undefined,
+      relations: relations?.length ? relations : undefined,
     })
   } catch (e: any) {
     err.value = e?.message || String(e)
@@ -169,7 +175,7 @@ async function run() {
       <template v-else>
         <textarea v-model="scene" rows="2" placeholder="整体画面描述（可选），例如「夜晚废墟，少女站在左侧仰望右上角的满月」" />
         <div style="margin-top: 8px">
-          <LayoutPanel :regions="regions" :canvas="canvas" :chars="chars" :background="layoutBg ? images[0] : undefined" />
+          <LayoutPanel :regions="regions" :canvas="canvas" :chars="chars" :gbc="doc.settings.genFormat === 'gbc'" :background="layoutBg ? images[0] : undefined" />
         </div>
       </template>
 
@@ -262,6 +268,10 @@ async function run() {
         <label>
           附加规则（每次生成都会注入给模型，例如「画风偏厚涂」「必须 cowboy shot」）
           <textarea v-model="doc.settings.genRules" rows="3" style="margin-top: 4px" />
+        </label>
+        <label v-if="doc.settings.genFormat === 'gbc'">
+          GBC 结尾行（复制 GBC 时加在最后，和训练标注一致：质量 / 年代 / 分级，留空不加）
+          <input v-model="doc.settings.gbcTail" style="margin-top: 4px" placeholder="masterpiece, recent, safe" />
         </label>
         <div class="row"><span class="spacer" /><button class="ghost" @click="resetInject">恢复默认</button></div>
       </div>

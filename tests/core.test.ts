@@ -90,7 +90,46 @@ test('GBC soft text', () => {
   assert.equal(t[0], '<gbc bbox=yxyx space=abs_centralized canvas=1000x1000>')
   assert.equal(t[1], '# [image] A girl waves.')
   assert.equal(t[2], 'tags: 1girl')
-  assert.equal(t[3], '- [hanabi] [-500,-500,500,0] hanabi, waving')
+  assert.equal(t[3], '- [hanabi] [-500,-500,500,0] waving')
+  assert.equal(t[4], '  tags: hanabi')
+})
+
+test('GBC boxes: tags, duplicate labels, relations, tail', () => {
+  const set: any = { canvas: { w: 1000, h: 1000 }, chars: [],
+    tags: [{ en: 'Two cats.', zh: '', weight: 1, section: 'Caption' }, { en: 'night', zh: '', weight: 1.2, section: 'Scene' }],
+    regions: [
+      { id: 'a', x: 0, y: 0, w: 0.5, h: 0.5, text: 'A black cat.', kind: 'obj', label: 'cat', tags: 'black cat, sitting' },
+      { id: 'b', x: 0.5, y: 0.5, w: 0.5, h: 0.5, text: 'A white cat.', kind: 'obj', label: 'cat', tags: 'white cat, Sitting, sitting' }],
+    relations: [{ ids: ['a', 'b'], text: 'the black cat looks at the white cat' }, { ids: ['a', 'gone'], text: 'x' }] }
+  const t = gbcText(set, 'masterpiece, recent, safe').split('\n')
+  assert.equal(t[2], 'tags: (night:1.2)')
+  assert.equal(t[3], '- [cat 1] [-500,-500,0,0] A black cat.')
+  assert.equal(t[4], '  tags: black cat, sitting')
+  assert.equal(t[6], '  tags: white cat, sitting')
+  assert.equal(t[7], '- relation [cat 1] [cat 2]: the black cat looks at the white cat')
+  assert.equal(t[8], 'masterpiece, recent, safe')
+  assert.equal(t.length, 9)
+})
+
+test('parseGen GBC: box tags, relations, character sections move into the box', async () => {
+  // translate.ts pulls in the browser store; give it a minimal window
+  const g = globalThis as any
+  const mem = new Map<string, string>()
+  g.localStorage ??= { getItem: (k: string) => mem.get(k) ?? null, setItem: (k: string, v: string) => mem.set(k, v), removeItem: (k: string) => mem.delete(k) }
+  g.window ??= { addEventListener() {}, dispatchEvent() {}, setTimeout, clearTimeout }
+  const { parseGen } = await import('../src/lib/translate.ts')
+  const reply = JSON.stringify({
+    caption: 'A girl in the rain.',
+    sections: [{ name: 'Scene', tags: ['rain'] }, { name: 'Outfit', tags: ['red coat'] }],
+    layout: [{ n: 1, kind: 'char', cid: 'A', x: 0, y: 0, w: 1, h: 1, desc: 'She smiles.', tags: 'smile, umbrella' },
+      { n: 2, kind: 'obj', label: 'umbrella', x: 0, y: 0, w: 0.5, h: 0.3, desc: 'A clear umbrella.' }],
+    relations: [{ n: [1, 2], text: 'she holds the umbrella' }],
+  })
+  const r = parseGen(reply, false, true)
+  assert.deepEqual(r.sections.map((s) => s.name), ['Scene'])
+  assert.deepEqual(r.boxes[0].tags, ['smile', 'umbrella', 'red coat'])
+  assert.equal(r.boxes[1].label, 'umbrella')
+  assert.deepEqual(r.relations, [{ n: [1, 2], text: 'she holds the umbrella' }])
 })
 
 test('fmtDate', () => {

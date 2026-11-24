@@ -7,8 +7,8 @@ import { ref } from 'vue'
 import type { PromptSet, Tag } from '../lib/types'
 import { doc, touch, snapshot, promptText, buildTags, dedupe, settings, newSet, folders, allLabels } from '../lib/store'
 import { aiEdit, aiVariants, aiClassify, aiReview, aiCritique, translateSetMissing, QUICK_ACTIONS, ctxOf, type ReviewResult } from '../lib/ai'
-import { boxesToRegions } from '../lib/layout'
-import type { Region } from '../lib/types'
+import { boxesToRegions, relsToRegions } from '../lib/layout'
+import type { Region, Relation } from '../lib/types'
 import { generateSet, type GenResult } from '../lib/translate'
 import { getImage } from '../lib/imagedb'
 
@@ -19,7 +19,7 @@ const instruction = ref('')
 const nVar = ref(1)
 const busy = ref('')
 const note = ref('')
-const undo = ref<{ id: string; tags: Tag[]; negative: string; name: string; regions?: Region[] } | null>(null)
+const undo = ref<{ id: string; tags: Tag[]; negative: string; name: string; regions?: Region[]; relations?: Relation[] } | null>(null)
 const review = ref<ReviewResult | null>(null)
 const reviewSet = ref<PromptSet | null>(null) // the set the current review was made for
 
@@ -34,13 +34,32 @@ async function job(label: string, fn: (set: PromptSet) => Promise<void>) {
 
 function withNeg(base: string, r: GenResult) { return dedupe([...base.split(','), ...r.negative]).join(', ') }
 
+// GBC replies carry the whole-image caption separately; keep it as the Caption section
+function sectionsOf(r: GenResult) {
+  return r.caption && !r.sections.some((s) => s.name === 'Caption')
+    ? [{ name: 'Caption', tags: [r.caption] }, ...r.sections] : r.sections
+}
+// new boxes (+ relations) from a reply; old boxes give back character/outfit links
+function layoutOf(r: GenResult, old?: Region[]): { regions: Region[]; relations?: Relation[] } {
+  const ids: string[] = []
+  const regions = boxesToRegions(r.boxes, 0, old, ids)
+  const relations = relsToRegions(r.relations, ids)
+  return { regions, relations: relations.length ? relations : undefined }
+}
+
 function apply(set: PromptSet, r: GenResult) {
   if (!r.sections.length) throw new Error('模型没有返回可用的标签')
   snapshot(set, 'AI 修改前')
   undo.value = { id: set.id, tags: JSON.parse(JSON.stringify(set.tags)), negative: set.negative, name: set.name,
-    regions: set.regions ? JSON.parse(JSON.stringify(set.regions)) : undefined }
-  set.tags = buildTags(settings().genPrefix, r.sections)
-  if (set.regions?.length && r.boxes.length) set.regions = boxesToRegions(r.boxes, 0)
+    regions: set.regions ? JSON.parse(JSON.stringify(set.regions)) : undefined,
+    relations: set.relations ? JSON.parse(JSON.stringify(set.relations)) : undefined }
+  set.tags = buildTags(settings().genPrefix, sectionsOf(r))
+  if (set.regions?.length && r.boxes.length) {
+    const l = layoutOf(r, set.regions)
+    set.regions = l.regions
+    // no new relations in the reply: keep old ones whose boxes still exist
+    set.relations = l.relations || set.relations?.filter((x) => x.ids.every((id) => l.regions.some((g) => g.id === id)))
+  }
   if (r.negative.length) set.negative = withNeg(settings().genNegative, r)
   if (r.name && /^(未命名|生成|示例|返图|布局|参考图)/.test(set.name)) set.name = r.name
   touch(set)
@@ -55,19 +74,27 @@ function undoLast() {
   s.negative = u.negative
   s.name = u.name
   if (u.regions) s.regions = u.regions
+  s.relations = u.relations
   touch(s)
   undo.value = null
 }
 
 function addSetFrom(from: PromptSet, r: GenResult, name: string): PromptSet {
   const s = newSet(r.name || name)
-  s.tags = buildTags(settings().genPrefix, r.sections)
+  s.tags = buildTags(settings().genPrefix, sectionsOf(r))
   s.negative = withNeg(settings().genNegative, r)
   s.category = from.category
   s.folder = from.folder
   s.labels = from.labels ? [...from.labels] : undefined
   if (from.regions?.length) {
-    s.regions = r.boxes.length ? boxesToRegions(r.boxes, 0) : JSON.parse(JSON.stringify(from.regions))
+    if (r.boxes.length) {
+      const l = layoutOf(r, from.regions)
+      s.regions = l.regions
+      s.relations = l.relations
+    } else {
+      s.regions = JSON.parse(JSON.stringify(from.regions))
+      if (from.relations) s.relations = JSON.parse(JSON.stringify(from.relations))
+    }
     s.canvas = from.canvas ? { ...from.canvas } : undefined
   }
   if (from.chars) s.chars = JSON.parse(JSON.stringify(from.chars))

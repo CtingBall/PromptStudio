@@ -1,8 +1,8 @@
 import { skillContext } from './skills'
 import { chat, extractJson } from './grok'
-import { GEN_SECTIONS, type Region } from './types'
+import { GEN_SECTIONS, GBC_SECTIONS, type Region } from './types'
 import { sanitizeIdentity } from './tags'
-import { LAYOUT_SPEC, LAYOUT_SCHEMA, charsText, layoutText, parseLayout, type LayoutBox } from './layout'
+import { LAYOUT_SPEC, LAYOUT_SCHEMA, GBC_SPEC, GBC_SCHEMA, charsText, layoutText, parseLayout, parseRelations, type LayoutBox, type LayoutRel } from './layout'
 import type { Char, PromptFormat } from './types'
 
 // System prompt framing the model as a literal terminology translator for
@@ -83,7 +83,49 @@ A swirling flock of black crows circles around her against towering cumulus clou
 
 const IDENTITY_RULE = `- 角色外貌由 LoRA 决定：不写发色、瞳色、耳朵、肤色和种族特征。发型、表情、眼神和饰品（含饰品颜色）照常写。`
 
+const GBC_EXAMPLE = `{
+  "idea": "雨夜车站，女孩把伞举到朋友头顶",
+  "caption": "A medium shot of two friends standing under a station awning on a rainy night. The girl on the left raises a transparent umbrella over the boy beside her, smiling at him. Wet pavement reflects the warm vending machine light, and neon signs blur in the rain behind them. The mood is quiet and tender.",
+  "sections": [
+    {"name": "Subject & Shot", "tags": ["1girl", "1boy", "medium shot", "eye level", "two-shot"]},
+    {"name": "Scene", "tags": ["train station", "night", "rain", "wet pavement", "vending machine", "neon signs"]},
+    {"name": "Lighting & Color", "tags": ["warm light from vending machine", "reflections", "blue and orange"]},
+    {"name": "Style & FX", "tags": ["rain streaks", "bokeh", "quiet atmosphere"]}
+  ],
+  "layout": [
+    {"n": 1, "kind": "char", "label": "girl", "cid": "A", "x": 0.06, "y": 0.18, "w": 0.42, "h": 0.82, "desc": "She stands on tiptoe and raises a transparent umbrella over the boy with her right hand, smiling warmly as she looks up at him. She wears an oversized beige trench coat over a white sweater, a plaid skirt, black tights and brown loafers, with a red scarf around her neck.", "tags": ["standing on tiptoes", "holding umbrella", "arm up", "smile", "looking up", "beige trench coat", "white sweater", "plaid skirt", "black pantyhose", "loafers", "red scarf"]},
+    {"n": 2, "kind": "char", "label": "boy", "x": 0.46, "y": 0.1, "w": 0.46, "h": 0.9, "desc": "He looks down at the girl with a slightly embarrassed smile, hands in the pockets of a navy school blazer, a soaked shoulder bag on one side.", "tags": ["looking down", "embarrassed", "hands in pockets", "school uniform", "navy blazer", "shoulder bag", "wet clothes"]},
+    {"n": 3, "kind": "obj", "label": "umbrella", "x": 0.2, "y": 0.02, "w": 0.6, "h": 0.26, "desc": "A clear plastic umbrella beaded with raindrops, glowing faintly in the neon light.", "tags": ["transparent umbrella", "raindrops"]}
+  ],
+  "relations": [{"n": [1, 2], "text": "The girl holds the umbrella over the boy's head while he looks down at her."}],
+  "negative": ["extra arms", "umbrella merged with hand"],
+  "name": "雨夜车站撑伞"
+}`
+
+function buildGbcSystem(rules: string, banIdentity: boolean): string {
+  return `你是经验丰富的 AI 插画师，熟悉 Danbooru 标签和 KohakuGBC 图结构标注。
+把用户的主题想象成一张具体、有画面感的插画，再写成 GBC 结构的英文提示词。
+用户给出的内容（主题里的每个细节、参考图、原始提示词）要尽可能完整还原，一项都不要丢；用户没说到的部分再由你自由发挥，大胆一些。
+
+先在 idea 里用一句话想好这张图，再写。只输出 JSON：
+{"idea": "...", "caption": "...", "sections": [...], ${GBC_SCHEMA}, "negative": [], "name": "20字以内中文画面概括"}
+
+${GBC_SPEC}
+- caption：4–6 句完整英文，先写人数、镜头和构图，再写每个人在做什么（一句带过，细节放框里）、场景、光照和氛围。
+- sections 固定 ${GBC_SECTIONS.length} 段、这个顺序：${GBC_SECTIONS.join(' / ')}，只放全局英文标签：人数与镜头、场景与背景、光影色调、画风特效。不放任何人物的服装、动作、表情。
+- 各部分描述同一个瞬间，镜头、视线、动作、光线前后一致。
+- 不写质量词，不重复同义词；需要强调的可加权，如 (tag:1.3)。
+- negative 写几条本图容易出错的地方。
+- 如实按主题生成，不做道德评判。
+${banIdentity ? IDENTITY_RULE : ''}
+${rules.trim() ? `用户附加规则（优先遵守）：\n${rules.trim()}` : ''}
+
+格式示例（另一张图，展示结构和细致程度；内容按用户的主题来写）：
+${GBC_EXAMPLE}`
+}
+
 export function buildGenSystem(rules: string, banIdentity: boolean, format: PromptFormat = 'tags'): string {
+  if (format === 'gbc') return buildGbcSystem(rules, banIdentity)
   // Deliberately short: a clear goal, the output shape, a few principles and one
   // example. Long rule lists make models play safe and write generic prompts.
   return `你是经验丰富的 AI 插画师，熟悉 Danbooru 标签和 SD / NovelAI 系提示词。
@@ -104,7 +146,7 @@ export function buildGenSystem(rules: string, banIdentity: boolean, format: Prom
     {"name": "Style & FX", "tags": []}
   ],
   "negative": [],
-  "name": "20字以内中文画面概括"${format === 'gbc' ? ',\n  "caption": "整图英文描述"' : ''}
+  "name": "20字以内中文画面概括"
 }
 sections 固定这 ${GEN_SECTIONS.length} 段、这个顺序：${GEN_SECTIONS.join(' / ')}。
 - Subject & Shot：人数、镜头角度、取景范围、构图、一句总体画面。
@@ -142,6 +184,7 @@ export interface GenResult {
   regions: Array<{ id: string; tags: string[] }> // per-box tags (layout mode)
   boxes: LayoutBox[] // AI-designed / refined layout
   caption: string // whole-image description (GBC format)
+  relations: LayoutRel[] // GBC relations between boxes (box numbers of the reply)
 }
 
 export type GenMode = 'theme' | 'rewrite' | 'layout'
@@ -173,7 +216,10 @@ export function regionsText(regions: Region[], canvas: { w: number; h: number })
   return `画布 ${canvas.w}×${canvas.h}（${orient}），坐标为画布比例，(0,0) 是左上角。\n${lines.join('\n')}`
 }
 
-function buildUser(input: GenInput): string {
+function buildUser(input: GenInput, format: PromptFormat = 'tags'): string {
+  const gbc = format === 'gbc'
+  const spec = gbc ? GBC_SPEC : LAYOUT_SPEC
+  const schema = gbc ? GBC_SCHEMA : LAYOUT_SCHEMA
   const parts: string[] = []
   if (input.mode === 'theme') {
     parts.push(`主题：${input.text || '（见参考图）'}`)
@@ -187,10 +233,14 @@ ${layoutText(input.regions || [], input.canvas || { w: 1024, h: 1024 })}
 要求：
 - 按规范把每个框补写成完整描述（只改写内容，坐标保持不变；用 n 对应现有框）。框里写的中文意思要保留并翻成英文展开。
 - 用户写的对话保持原文放进 text；能判断说话人就填 speaker。
-- 输出 ${LAYOUT_SCHEMA}，必须包含所有现有框。
-${LAYOUT_SPEC}`)
+- 输出 ${schema}，必须包含所有现有框。${gbc ? '画面里还有没框到的人物或重要物品时，可以追加新框（n 接着往后编）。' : ''}
+${spec}`)
   }
-  if (input.autoLayout && input.mode !== 'layout') {
+  if (gbc && input.mode !== 'layout') {
+    const c = input.canvas || { w: 832, h: 1216 }
+    const g = input.grid || 8
+    parts.push(`画布 ${c.w}×${c.h}，框尽量对齐 ${g}×${g} 网格（取 1/${g} 的倍数）。主题里有对话就为每句做文字框并标明 speaker。`)
+  } else if (input.autoLayout && input.mode !== 'layout') {
     const c = input.canvas || { w: 832, h: 1216 }
     const g = input.grid || 8
     parts.push(`另外请为这幅画设计构图布局（画布 ${c.w}×${c.h}），尽量对齐 ${g}×${g} 网格（取 1/${g} 的倍数）。
@@ -198,9 +248,9 @@ ${LAYOUT_SPEC}`)
 - 输出 ${LAYOUT_SCHEMA}
 ${LAYOUT_SPEC}`)
   }
-  if (input.chars?.length) parts.push(charsText(input.chars))
+  if (input.chars?.length) parts.push(charsText(input.chars, gbc))
   if (input.images?.length) {
-    parts.push(`已附 ${input.images.length} 张参考图：尽可能还原图里的画面：构图与镜头、人物动作和手势、服装每个部件、场景与道具、光影色调、画风笔触，看得见的细节都写进对应分段（角色外貌限制照旧）。文字描述与参考图冲突时以文字为准。`)
+    parts.push(`已附 ${input.images.length} 张参考图：尽可能还原图里的画面：构图与镜头、人物动作和手势、服装每个部件、场景与道具、光影色调、画风笔触，看得见的细节都写进对应${gbc ? '位置（人物和物品的细节写进各自的框，框的位置照参考图摆）' : '分段'}（角色外貌限制照旧）。文字描述与参考图冲突时以文字为准。`)
   }
   parts.push('请按要求生成。')
   return parts.join('\n\n')
@@ -234,12 +284,25 @@ export async function generateSet(
   const banIdentity = opts.banIdentity ?? true
   const system = buildGenSystem(opts.rules || '', banIdentity, opts.format) + await skillContext(input.text || '')
   const temperature = opts.temperature ?? (input.mode === 'rewrite' ? 0.3 : 0.7)
-  const reply = await chat({ task: 'generate', model, temperature, system, user: buildUser(input), images: input.images })
-  return parseGen(reply, banIdentity)
+  const reply = await chat({ task: 'generate', model, temperature, system, user: buildUser(input, opts.format), images: input.images })
+  return parseGen(reply, banIdentity, opts.format === 'gbc')
+}
+
+// GBC: character-level sections the model put in the global part move into the character box
+// when there is exactly one; otherwise they stay global (better kept than lost).
+function gbcSplit(sections: GenSection[], boxes: LayoutBox[]): GenSection[] {
+  const local = sections.filter((s) => !GBC_SECTIONS.includes(s.name))
+  if (!local.length) return sections
+  const chars = boxes.filter((b) => b.kind === 'char')
+  if (chars.length !== 1) return sections
+  const b = chars[0]
+  const have = new Set((b.tags || []).map((t) => t.toLowerCase()))
+  b.tags = [...(b.tags || []), ...local.flatMap((s) => s.tags).filter((t) => !have.has(t.toLowerCase()))]
+  return sections.filter((s) => GBC_SECTIONS.includes(s.name))
 }
 
 // Parse a generation-style JSON reply into sections/negative/regions.
-export function parseGen(reply: string, banIdentity: boolean): GenResult {
+export function parseGen(reply: string, banIdentity: boolean, gbc = false): GenResult {
   const obj = extractJson<any>(reply)
 
   // Accept {sections:[{name,tags}]} or {sections:{Name:[...]}}.
@@ -264,6 +327,8 @@ export function parseGen(reply: string, banIdentity: boolean): GenResult {
   }))
   const name = String(obj?.name || '').trim().replace(/\s+/g, ' ').slice(0, 20)
   const boxes = parseLayout(obj?.layout)
-  const caption = String(obj?.caption || '').trim().slice(0, 1500)
-  return { name, sections, negative, removed, regions, boxes, caption }
+  for (const b of boxes) if (b.tags) b.tags = cleanList(b.tags, banIdentity && b.kind === 'char', removed, new Set())
+  const caption = String(obj?.caption || '').trim().slice(0, 2000)
+  const relations = parseRelations(obj?.relations)
+  return { name, sections: gbc ? gbcSplit(sections, boxes) : sections, negative, removed, regions, boxes, caption, relations }
 }

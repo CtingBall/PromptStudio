@@ -4,7 +4,7 @@
 // generate dialog).
 import { ref, computed } from 'vue'
 import BBoxEditor from './BBoxEditor.vue'
-import type { Region, Char } from '../lib/types'
+import type { Region, Char, Relation } from '../lib/types'
 import { describeBox } from '../lib/translate'
 
 const props = defineProps<{
@@ -12,8 +12,15 @@ const props = defineProps<{
   canvas: { w: number; h: number }
   background?: string
   chars?: Char[]
+  gbc?: boolean            // show per-box tags / names
+  relations?: Relation[]   // GBC relations between boxes (edited in place)
 }>()
 const emit = defineEmits<{ (e: 'change'): void }>()
+function addRel() {
+  const r = props.regions
+  props.relations?.push({ ids: [r[0].id, r[1].id], text: '' })
+  emit('change')
+}
 // character ids available for char / speaker selects
 const cids = computed(() => {
   const ids = new Set<string>(['A', 'B', 'C', 'D'])
@@ -57,6 +64,9 @@ const selected = ref('')
 function remove(id: string) {
   const i = props.regions.findIndex((r) => r.id === id)
   if (i >= 0) props.regions.splice(i, 1)
+  if (props.relations) {
+    for (let k = props.relations.length - 1; k >= 0; k--) if (props.relations[k].ids.includes(id)) props.relations.splice(k, 1)
+  }
   if (selected.value === id) selected.value = ''
   emit('change')
 }
@@ -105,7 +115,7 @@ function onKey(e: KeyboardEvent) {
 
     <div style="display: flex; flex-direction: column; gap: 6px">
       <div v-for="(r, i) in regions" :key="r.id" class="row"
-        :style="{ gap: '6px', padding: '4px', borderRadius: '6px', background: r.id === selected ? 'var(--panel2)' : '' }"
+        :style="{ gap: '6px', padding: '4px', borderRadius: '6px', flexWrap: 'wrap', background: r.id === selected ? 'var(--panel2)' : '' }"
         @click="selected = r.id">
         <span class="badge" :style="{ color: `hsl(${(i * 67) % 360} 85% 60%)` }">#{{ i + 1 }}</span>
         <span class="muted" style="font-size: 12px; width: 120px">{{ describeBox(r) }}</span>
@@ -125,6 +135,28 @@ function onKey(e: KeyboardEvent) {
         <input v-if="r.kind === 'text'" v-model="r.desc" placeholder="气泡样式（可空）" style="width: 140px" @change="emit('change')" />
         <input v-model="r.text" :placeholder="r.kind === 'text' ? '要画出来的文字，例如：MOSS' : '框里有什么，例如：持剑少女 / 满月 / 倒塌的钟楼'" style="flex: 1" @change="emit('change')" />
         <button class="ghost danger" style="padding: 0 6px" @click.stop="remove(r.id)">×</button>
+        <div v-if="gbc && r.kind !== 'text'" class="row" style="flex-basis: 100%; gap: 6px; padding-left: 28px">
+          <input v-if="r.kind !== 'char'" v-model="r.label" placeholder="名称（如 umbrella）" style="width: 120px" title="GBC 里这个框的名字" @change="emit('change')" />
+          <input v-model="r.tags" placeholder="这个框的标签，逗号分隔：动作、表情、服装、配饰…" style="flex: 1" title="GBC 每个框下面的 tags: 行" @change="emit('change')" />
+        </div>
+      </div>
+    </div>
+
+    <div v-if="relations" style="display: flex; flex-direction: column; gap: 6px; margin-top: 8px">
+      <div class="row" style="gap: 6px">
+        <b style="font-size: 13px">框之间的关系</b>
+        <span class="muted" style="font-size: 12px">GBC 的 relation 行：谁对谁做什么、谁在谁前面</span>
+        <button class="ghost" style="margin-left: auto" :disabled="regions.length < 2" @click="addRel">+ 关系</button>
+      </div>
+      <div v-for="(rel, k) in relations" :key="k" class="row" style="gap: 6px">
+        <select v-model="rel.ids[0]" style="width: auto" @change="emit('change')">
+          <option v-for="(r, i) in regions" :key="r.id" :value="r.id">#{{ i + 1 }} {{ describeBox(r) }}</option>
+        </select>
+        <select v-model="rel.ids[1]" style="width: auto" @change="emit('change')">
+          <option v-for="(r, i) in regions" :key="r.id" :value="r.id">#{{ i + 1 }} {{ describeBox(r) }}</option>
+        </select>
+        <input v-model="rel.text" placeholder="例如：the girl holds the umbrella over the boy" style="flex: 1" @change="emit('change')" />
+        <button class="ghost danger" style="padding: 0 6px" @click="relations.splice(k, 1); emit('change')">×</button>
       </div>
     </div>
   </div>

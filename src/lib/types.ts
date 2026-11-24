@@ -34,7 +34,12 @@ export interface Region {
   speaker?: string // text box: id of the character who says it
   desc?: string   // text box: bubble/style description (text holds the words)
   outfit?: string // char box: outfit for this box only (overrides the character's default)
+  tags?: string   // GBC: comma-separated tags for this box (its own "tags:" line)
+  label?: string  // GBC: short noun shown as [label] (char boxes use the LoRA trigger)
 }
+
+// GBC relation between boxes (by region id), e.g. "the girl holds the umbrella over the boy"
+export interface Relation { ids: string[]; text: string }
 
 // A character in the picture; trigger = LoRA trigger word (optional).
 export interface Char { id: string; name: string; trigger?: string; guide?: string; outfit?: string }  // guide = fixed prompt, outfit = default clothes (replaceable per box)
@@ -50,6 +55,7 @@ export interface PromptSet {
   regions?: Region[]                    // bbox / grid regions, coords normalized 0–1
   canvas?: { w: number; h: number }     // target image size for the regions
   chars?: Char[]                        // characters (A/B/…) used by layout boxes
+  relations?: Relation[]                // GBC relations between boxes
   history?: SetVersion[]                // newest first, capped
   tags: Tag[]
   negative: string
@@ -85,7 +91,12 @@ export interface Settings {
   genFormat: PromptFormat // how generated prompts are written
   routes: Partial<Record<AiTask, AiRoute>> // per-feature model override; empty fields fall back to the main AI
   skills?: string[]       // enabled built-in skills (public/skills); relevant passages go into AI generation prompts
+  gbcTail?: string        // last line of GBC output (quality / era / rating), like the training captions
 }
+
+// Global (unboxed) sections in GBC mode; per-character content lives in the boxes.
+export const GBC_SECTIONS = ['Subject & Shot', 'Scene', 'Lighting & Color', 'Style & FX']
+export const DEFAULT_GBC_TAIL = 'masterpiece, recent, safe'
 
 export type PromptFormat = 'tags' | 'natural' | 'mixed' | 'gbc'
 export const FORMAT_LABEL: Record<PromptFormat, string> = { tags: '标签', natural: '自然语言', mixed: '标签+自然语言', gbc: 'GBC 图结构' }
@@ -128,6 +139,7 @@ export const DEFAULT_SETTINGS: Settings = {
   genFormat: 'tags',
   routes: {},
   skills: [],
+  gbcTail: DEFAULT_GBC_TAIL,
 }
 
 // Section order used for generation (matches the user's template).

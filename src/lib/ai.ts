@@ -3,24 +3,29 @@ import { skillContext } from './skills'
 import { chat, extractJson } from './grok'
 import { buildGenSystem, parseGen, translateTags, type GenResult } from './translate'
 import { settings, remember, touch } from './store'
-import type { Category, PromptSet, Region, Char } from './types'
-import { LAYOUT_SPEC, LAYOUT_SCHEMA, layoutText, charsText } from './layout'
+import type { Category, PromptSet, Region, Char, Relation } from './types'
+import { LAYOUT_SPEC, LAYOUT_SCHEMA, GBC_SPEC, GBC_SCHEMA, layoutText, charsText } from './layout'
 
 // Layout context of a set, so edits/variants/reviews keep and improve the bbox layout.
-export interface LayoutCtx { regions?: Region[]; canvas?: { w: number; h: number }; chars?: Char[] }
+export interface LayoutCtx { regions?: Region[]; canvas?: { w: number; h: number }; chars?: Char[]; relations?: Relation[] }
 export function ctxOf(set: PromptSet): LayoutCtx {
-  return { regions: set.regions, canvas: set.canvas, chars: set.chars }
+  return { regions: set.regions, canvas: set.canvas, chars: set.chars, relations: set.relations }
 }
-function layoutBlock(ctx: LayoutCtx | undefined, task: string): string {
+function layoutBlock(ctx: LayoutCtx | undefined, task: string, gbc = false): string {
   if (!ctx) return ''
   const parts: string[] = []
-  if (ctx.regions?.length) {
-    parts.push(`${layoutText(ctx.regions, ctx.canvas || { w: 1024, h: 1024 })}
+  const regs = ctx.regions || []
+  if (regs.length) {
+    const rels = (ctx.relations || []).map((r) => {
+      const n = r.ids.map((id) => regs.findIndex((g) => g.id === id) + 1).filter((x) => x > 0)
+      return n.length >= 2 ? `- 关系 [${n.join(',')}]：${r.text}` : ''
+    }).filter(Boolean)
+    parts.push(`${layoutText(regs, ctx.canvas || { w: 1024, h: 1024 })}${rels.length ? '\n' + rels.join('\n') : ''}
 这组提示词带画框布局。${task}
-同时输出完整的新布局 ${LAYOUT_SCHEMA}（包含所有框，用 n 对应现有框；没被要求改构图时坐标保持不变）。检查：每句对话的 speaker 对、气泡靠近说话者头部、角色框之间区分明显、背景没有做成框。
-${LAYOUT_SPEC}`)
+同时输出完整的新布局 ${gbc ? GBC_SCHEMA : LAYOUT_SCHEMA}（包含所有框，用 n 对应现有框；没被要求改构图时坐标保持不变）。检查：每句对话的 speaker 对、气泡靠近说话者头部、角色框之间区分明显、背景没有做成框${gbc ? '、每个角色框的动作表情服装写全' : ''}。
+${gbc ? GBC_SPEC : LAYOUT_SPEC}`)
   }
-  if (ctx.chars?.length) parts.push(charsText(ctx.chars))
+  if (ctx.chars?.length) parts.push(charsText(ctx.chars, gbc))
   return parts.length ? '\n\n' + parts.join('\n\n') : ''
 }
 
@@ -39,9 +44,9 @@ ${prompt}
 
 修改要求：${instruction}
 
-按要求修改后，输出完整的新提示词（全部分段，不只是改动部分）。没被要求修改的内容尽量保持原样。` + layoutBlock(ctx, '画框也按修改要求同步调整（如换服装要改角色框描述）。')
+按要求修改后，输出完整的新提示词（全部分段，不只是改动部分）。没被要求修改的内容尽量保持原样。` + layoutBlock(ctx, '画框也按修改要求同步调整（如换服装要改角色框描述）。', o.format === 'gbc')
   const reply = await chat({ task: 'edit', model: o.model, temperature, system: buildGenSystem(o.rules, o.ban, o.format) + await skillContext(instruction + '\n' + prompt), user, images })
-  return parseGen(reply, o.ban)
+  return parseGen(reply, o.ban, o.format === 'gbc')
 }
 
 export const QUICK_ACTIONS: Array<{ label: string; text: string }> = [
@@ -102,7 +107,7 @@ export async function aiReview(prompt: string, negative: string, image: string, 
 "suggestions": ["中文改进建议"]。
 sections 和 negative 给出修正后的完整提示词：对没出现的元素加强或加权，把问题写进 negative。`
   const user = `提示词：\n${prompt}\n\n负向词：${negative || '（无）'}`
-  const reply = await chat({ task: 'review', model: o.model, temperature: 0.3, system, user: user + layoutBlock(ctx, '对照返图检查画框：对话气泡是否出现在说话者旁边、角色是否画在对应框里；把问题写进 missing/extra，并修正框的描述或位置。'), images: [image] })
+  const reply = await chat({ task: 'review', model: o.model, temperature: 0.3, system, user: user + layoutBlock(ctx, '对照返图检查画框：对话气泡是否出现在说话者旁边、角色是否画在对应框里；把问题写进 missing/extra，并修正框的描述或位置。', o.format === 'gbc'), images: [image] })
   const r = extractJson<any>(reply)
   const list = (v: unknown) => (Array.isArray(v) ? v.map(String) : [])
   return {
@@ -111,7 +116,7 @@ sections 和 negative 给出修正后的完整提示词：对没出现的元素�
     missing: list(r?.missing),
     extra: list(r?.extra),
     suggestions: list(r?.suggestions),
-    fix: parseGen(reply, o.ban),
+    fix: parseGen(reply, o.ban, o.format === 'gbc'),
   }
 }
 
@@ -127,7 +132,7 @@ export async function aiCritique(prompt: string, negative: string, ctx?: LayoutC
 "suggestions": ["中文改进建议"]。
 sections 和 negative 给出优化后的完整提示词。`
   const user = `提示词：\n${prompt}\n\n负向词：${negative || '（无）'}`
-  const reply = await chat({ task: 'review', model: o.model, temperature: 0.3, system, user: user + layoutBlock(ctx, '按规范检查画框（对话归属、角色区分、背景不做框、描述是否具体），问题写进 missing/extra，并给出修正后的布局。') })
+  const reply = await chat({ task: 'review', model: o.model, temperature: 0.3, system, user: user + layoutBlock(ctx, '按规范检查画框（对话归属、角色区分、背景不做框、描述是否具体），问题写进 missing/extra，并给出修正后的布局。', o.format === 'gbc') })
   const r = extractJson<any>(reply)
   const list = (v: unknown) => (Array.isArray(v) ? v.map(String) : [])
   return {
@@ -136,7 +141,7 @@ sections 和 negative 给出优化后的完整提示词。`
     missing: list(r?.missing),
     extra: list(r?.extra),
     suggestions: list(r?.suggestions),
-    fix: parseGen(reply, o.ban),
+    fix: parseGen(reply, o.ban, o.format === 'gbc'),
   }
 }
 

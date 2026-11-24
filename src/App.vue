@@ -22,8 +22,8 @@ import { lookup, snapshot, fmtDate } from './lib/store'
 import HistoryDialog from './components/HistoryDialog.vue'
 import ManualDialog from './components/ManualDialog.vue'
 import { AI_TASKS, type AiTask } from './lib/types'
-import type { PromptSet, Tag, Region, Char } from './lib/types'
-import { CATEGORIES, RATING_LABEL } from './lib/types'
+import type { PromptSet, Tag, Region, Char, Relation } from './lib/types'
+import { CATEGORIES, RATING_LABEL, DEFAULT_GBC_TAIL } from './lib/types'
 import LayoutPanel from './components/LayoutPanel.vue'
 import { checkLayout } from './lib/layout'
 import { elementsJson, gbcText, mossJson, injectWorkflow, loadTemplate, saveTemplate, download } from './lib/comfy'
@@ -392,9 +392,10 @@ function moveGroup(gi: number, d: number) {
   onGroupDrop(gi + d)
 }
 
-function applyGenerated(p: { name: string; prefix: string; sections: GenSection[]; negative: string[]; regions?: Region[]; canvas?: { w: number; h: number }; chars?: Char[] }) {
+function applyGenerated(p: { name: string; prefix: string; sections: GenSection[]; negative: string[]; regions?: Region[]; canvas?: { w: number; h: number }; chars?: Char[]; relations?: Relation[] }) {
   const set = newSet(p.name || '生成')
   if (p.regions?.length) { set.regions = p.regions; set.canvas = p.canvas; showLayout.value = true }
+  if (p.relations?.length) set.relations = p.relations
   if (p.chars?.length) set.chars = p.chars
   set.tags = buildTags(p.prefix, p.sections)
   set.negative = p.negative.join(', ')
@@ -406,6 +407,12 @@ function applyGenerated(p: { name: string; prefix: string; sections: GenSection[
 
 // ---- layout (bboxes) on the current set ----
 const showLayout = ref(false)
+// GBC sets show per-box tags and the relation editor
+const isGbcSet = computed(() => {
+  const s = current.value
+  return !!s && (settings().genFormat === 'gbc' || !!s.relations?.length || !!s.regions?.some((r) => r.tags))
+})
+const relsOf = (s: PromptSet) => (s.relations ||= [])
 function ensureLayout() {
   const s = current.value
   if (!s) return
@@ -472,7 +479,7 @@ async function copyGbc() {
   const s = current.value
   if (!s) return
   try {
-    await navigator.clipboard.writeText(gbcText(s))
+    await navigator.clipboard.writeText(gbcText(s, settings().gbcTail ?? DEFAULT_GBC_TAIL))
     flash('已复制 GBC 格式：直接粘进正向提示词（MOSS-Image-heal 等）')
   } catch (e: any) {
     flash('复制失败：' + (e?.message || e))
@@ -733,7 +740,8 @@ function clampMaxImages() {
             <button v-if="comfyTpl" class="ghost" title="更换模板工作流" @click="exportComfy(true)">换模板</button>
             <button class="ghost" @click="showLayout = false">收起</button>
           </div>
-          <LayoutPanel :regions="current.regions" :canvas="current.canvas" :chars="current.chars" @change="touch(current!)" />
+          <LayoutPanel :regions="current.regions" :canvas="current.canvas" :chars="current.chars"
+            :gbc="isGbcSet" :relations="isGbcSet ? relsOf(current) : undefined" @change="touch(current!)" />
         </section>
 
         <section class="section">
@@ -830,6 +838,10 @@ function clampMaxImages() {
               <option :value="1000">0–1000 整数</option>
               <option :value="1">0–1 小数</option>
             </select>
+          </label>
+          <label>
+            GBC 结尾行（复制 GBC 时加在最后，如 masterpiece, recent, safe；留空不加）
+            <input v-model="doc.settings.gbcTail" style="margin-left: 6px; width: 260px" placeholder="masterpiece, recent, safe" />
           </label>
           <label>
             MOSS 首行触发（复制 MOSS JSON 时放在第一行，如 &lt;|artist|&gt;fkey&lt;|/artist|&gt;）
