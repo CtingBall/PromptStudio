@@ -554,3 +554,28 @@ button.primary:not(:disabled):hover { box-shadow: 0 4px 16px var(--accent-soft);
 .no-motion *, .no-motion *::before, .no-motion *::after { animation: none !important; transition: none !important; }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; } }
 .side .set-item { animation: popIn .28s cubic-bezier(.2,.8,.3,1) both; }
+
+/* ==== v0.4 explorer interaction ==== */
+.side-list { position: relative; outline: none; }
+.side-list:focus-visible { box-shadow: inset 0 0 0 1px var(--accent-soft); }
+.set-item.picked { background: var(--accent-soft); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 45%, transparent); }
+.set-item.focus { box-shadow: inset 0 0 0 1px var(--accent); }
+.set-item.picked.focus { box-shadow: inset 0 0 0 1.5px var(--accent); }
+.side-list.mode-card .set-item.picked .thumb img { outline: 2px solid var(--accent); outline-offset: 1px; filter: brightness(1.05); }
+.set-item.cut { opacity: .45; }
+.marquee { position: absolute; z-index: 5; pointer-events: none; border: 1px solid var(--accent);
+  background: color-mix(in srgb, var(--accent) 16%, transparent); border-radius: 3px; }
+.rename-input { width: 100%; padding: 2px 6px; font-size: inherit; border: 1px solid var(--accent); border-radius: 5px; }
+.drag-ghost { position: fixed; top: -100px; left: -100px; padding: 4px 10px; border-radius: 8px; background: var(--accent); color: #fff; font-size: 13px; }
+.crumbs .nav-btn { padding: 2px 7px; min-width: 0; }
+.crumb-path { display: flex; align-items: center; gap: 4px; flex: 1; min-width: 0; overflow-x: auto; }
+.status-bar { display: flex; align-items: center; gap: 10px; padding: 4px 10px; border-top: 1px solid var(--border); font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; }
+.status-bar .sel-n { color: var(--accent); font-weight: 600; }
+.status-bar .kb-hint { cursor: help; }
+.sel-bar { padding: 4px; border-radius: 8px; background: var(--accent-soft); }
+.empty-hint { text-align: center; margin-top: 20px; }
+.ctx-backdrop { position: fixed; inset: 0; z-index: 89; }
+.ctx-menu { min-width: 190px; }
+.ctx-menu button { display: flex; align-items: center; gap: 16px; }
+.ctx-menu button kbd { margin-left: auto; font-size: 11px; font-family: inherit; color: var(--muted); background: none; border: none; }
+.ctx-menu hr { border: none; border-top: 1px solid var(--border); margin: 3px 2px; }

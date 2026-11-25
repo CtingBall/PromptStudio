@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { useDragSelect, listSetter } from '../lib/dragSelect'
-import { ref, computed } from 'vue'
-import { doc, addSet, newSet, touch, removeSets, folders, createFolder, renameFolder, deleteFolder, allLabels, promptText, fmtDate, dateBucket } from '../lib/store'
+import { useSelection, useMarquee, FK, isFolderKey, folderOf, freeName } from '../lib/explorer'
+import { ref, computed, watch, nextTick } from 'vue'
+import { doc, addSet, newSet, touch, removeSets, duplicateSet, folders, createFolder, renameFolder, deleteFolder, allLabels, promptText, fmtDate, dateBucket } from '../lib/store'
 import { CATEGORIES, RATING_LABEL, FORMAT_LABEL, type Category, type PromptSet } from '../lib/types'
 import { promptFormat } from '../lib/tags'
 import { imgSrc } from '../lib/imagedb'
@@ -99,21 +99,90 @@ function create() {
   emit('update:selected', s.id)
 }
 
-// ---- bulk ----
-const bulk = ref(false)
-const sel = ref<string[]>([])
+// ---- Explorer-style folders + selection (click / Ctrl / Shift / marquee / keyboard) ----
+const bulk = ref(false)   // shows checkboxes; selection itself always works
+const crumbs = computed(() => {
+  const parts = folder.value ? folder.value.split('/') : []
+  return parts.map((p, i) => ({ name: p, path: parts.slice(0, i + 1).join('/') }))
+})
+const subFolders = computed(() => {
+  const pre = folder.value ? folder.value + '/' : ''
+  return folders.value.filter((f) => f.startsWith(pre) && f.length > pre.length && !f.slice(pre.length).includes('/'))
+    .map((path) => {
+      const inside = doc.sets.filter((s) => s.folder === path || (s.folder || '').startsWith(path + '/'))
+      const cover = inside.find((s) => s.shots?.length)?.shots?.[0].id
+      return { path, name: path.slice(pre.length), count: inside.length, cover }
+    })
+})
+const browsing = computed(() => ui.explorer && !q.value.trim() && rating.value === 'ALL' && !label.value.length && !favOnly.value && !range.value && !layoutOnly.value && !shotsOnly.value && !status.value)
+const shownFolders = computed(() => (browsing.value ? subFolders.value : []))
+const order = () => [...shownFolders.value.map((f) => FK + f.path), ...visible.value.map((s) => s.id)]
+const S = useSelection(order)
+const sel = computed(() => S.sel.value.filter((k) => !isFolderKey(k)))          // selected set ids
+const selFolders = computed(() => S.sel.value.filter(isFolderKey).map(folderOf))
 const selSets = () => doc.sets.filter((s) => sel.value.includes(s.id))
-const ds = useDragSelect()
-const setSel = listSetter(sel)
-function toggle(id: string) { sel.value = sel.value.includes(id) ? sel.value.filter((x) => x !== id) : [...sel.value, id] }
-function selectAll() { sel.value = sel.value.length === visible.value.length ? [] : visible.value.map((s) => s.id) }
+watch([visible, shownFolders], () => S.prune())
+const listEl = ref<HTMLElement | null>(null)
+function focusList() { nextTick(() => listEl.value?.focus({ preventScroll: true })) }
+function clearFilters() {
+  q.value = ''; rating.value = 'ALL'; label.value = []; favOnly.value = false
+  range.value = ''; layoutOnly.value = false; shotsOnly.value = false; status.value = ''
+}
+
+// folder navigation with back / forward history (mouse side buttons, Alt+←/→)
+const back = ref<string[]>([])
+const fwd = ref<string[]>([])
+function openFolder(p: string, hist = true) {
+  if (p === folder.value) return
+  const from = folder.value
+  if (hist) { back.value.push(from); fwd.value = [] }
+  folder.value = p
+  // going up selects the folder you came from, like Explorer
+  const child = from.startsWith(p ? p + '/' : '') && from !== p ? (p ? p + '/' : '') + from.slice(p ? p.length + 1 : 0).split('/')[0] : ''
+  if (child) nextTick(() => { S.set([FK + child]); scrollTo(FK + child) })
+  else S.clear()
+  focusList()
+}
+function goBack() { const p = back.value.pop(); if (p === undefined) return; fwd.value.push(folder.value); openFolder(p, false) }
+function goFwd() { const p = fwd.value.pop(); if (p === undefined) return; back.value.push(folder.value); openFolder(p, false) }
+function upFolder() { if (folder.value) openFolder(folder.value.includes('/') ? folder.value.slice(0, folder.value.lastIndexOf('/')) : '') }
+function toggleView() { ui.explorer = !ui.explorer; folder.value = ''; back.value = []; fwd.value = []; S.clear(); markUsed('explorer') }
+function scrollTo(k: string) { listEl.value?.querySelector(`[data-key="${CSS.escape(k)}"]`)?.scrollIntoView({ block: 'nearest' }) }
+// ---- item clicks ----
+function itemClick(e: MouseEvent, k: string) {
+  if (bulk.value && !e.shiftKey) { S.toggle(k); S.anchor.value = k; return }
+  const plain = S.click(e, k)
+  if (plain && !isFolderKey(k)) emit('update:selected', k)
+}
+function itemDbl(k: string) { if (isFolderKey(k)) openFolder(folderOf(k)) }
+function onSel(keys: string[]) { S.sel.value = keys }
+const mq = useMarquee(listEl, onSel)
+
+// ---- bulk ops on selected sets ----
 function bulkRating(c: string) {
   for (const s of selSets()) { s.category = c === 'NONE' ? undefined : (c as Category); touch(s) }
+}
+function moveSets(ids: string[], path: string) {
+  let n = 0
+  for (const s of doc.sets) if (ids.includes(s.id) && (s.folder || '') !== path) { s.folder = path || undefined; touch(s); n++ }
+  return n
+}
+function moveFolders(paths: string[], target: string) {
+  let n = 0
+  for (const p of paths) {
+    const name = p.slice(p.lastIndexOf('/') + 1)
+    const to = (target ? target + '/' : '') + name
+    if (to === p || target === p || target.startsWith(p + '/')) continue
+    if (renameFolder(p, to)) n++
+  }
+  return n
 }
 function bulkFolder() {
   const f = prompt('移动到文件夹（用 / 分级，留空 = 移到根目录）', folder.value === '__none' ? '' : folder.value)
   if (f === null) return
-  for (const s of selSets()) { s.folder = f.trim() || undefined; touch(s) }
+  const t = f.split('/').map((x) => x.trim()).filter(Boolean).join('/')
+  const n = moveSets(sel.value, t) + moveFolders(selFolders.value, t)
+  emit('toast', `已移动 ${n} 项到 ${t || '根目录'}`)
 }
 function bulkLabel(add: boolean) {
   const l = prompt(add ? '添加标签（逗号分隔多个）' : '移除标签（逗号分隔多个）')
@@ -140,16 +209,17 @@ async function bulkClassify() {
   }
   aiBusy.value = ''
 }
-function bulkDelete() {
-  if (!sel.value.length) return
-  const shownIds = new Set(visible.value.map((s) => s.id))
-  const hidden = sel.value.filter((id) => !shownIds.has(id)).length
-  if (!confirm(`删除选中的 ${sel.value.length} 个提示词组（含返图）？` + (hidden ? `\n注意：其中含 ${hidden} 个未显示（被筛选隐藏）的组。` : ''))) return
-  removeSets(sel.value)
+function deleteSelected() {
+  const ids = sel.value, fs = selFolders.value
+  if (!ids.length && !fs.length) return
+  const parts = [ids.length ? `${ids.length} 个提示词组（含返图）` : '', fs.length ? `${fs.length} 个文件夹（里面的组会移到上一级，不会删除）` : ''].filter(Boolean)
+  if (!confirm('删除 ' + parts.join(' 和 ') + '？')) return
+  if (ids.length) removeSets(ids)
+  for (const f of [...fs].sort((a, b) => b.length - a.length)) deleteFolder(f)
   if (!doc.sets.some((s) => s.id === props.selected)) emit('update:selected', doc.sets[0]?.id || '')
-  sel.value = []
+  S.clear()
+  emit('toast', '已删除 ' + parts.map((p) => p.replace(/（.*）/, '')).join('、'))
 }
-
 function bulkMerge() {
   const list = selSets()
   if (list.length < 2) { emit('toast', '选 2 个以上才能合并'); return }
@@ -166,33 +236,73 @@ function bulkMerge() {
   s.labels = [...new Set(list.flatMap((x) => x.labels || []))]
   doc.sets.unshift(s)
   emit('update:selected', s.id)
-  sel.value = []
+  S.set([s.id])
   emit('toast', `已合并 ${list.length} 组`)
 }
+// ---- new folder / inline rename ----
+const renaming = ref('')       // key being renamed (folder key or set id)
+const renameText = ref('')
+function newFolder() {
+  const parent = ui.explorer && folder.value !== '__none' ? folder.value : ''
+  if (!ui.explorer) { ui.explorer = true; folder.value = '' }
+  clearFilters()
+  const p = createFolder((parent ? parent + '/' : '') + freeName(folders.value, parent))
+  if (!p) return
+  markUsed('explorer')
+  nextTick(() => { S.set([FK + p]); scrollTo(FK + p); startRename(FK + p) })
+}
+function startRename(k: string) {
+  renaming.value = k
+  renameText.value = isFolderKey(k) ? folderOf(k).split('/').pop()! : doc.sets.find((s) => s.id === k)?.name || ''
+  nextTick(() => { const el = listEl.value?.querySelector<HTMLInputElement>('.rename-input'); el?.focus(); el?.select() })
+}
+function commitRename() {
+  const k = renaming.value
+  if (!k) return
+  renaming.value = ''
+  const n = renameText.value.trim().replace(/\//g, '／')
+  if (!n) return focusList()
+  if (isFolderKey(k)) {
+    const p = folderOf(k)
+    const to = (p.includes('/') ? p.slice(0, p.lastIndexOf('/') + 1) : '') + n
+    if (to !== p) {
+      if (folders.value.includes(to)) emit('toast', '这里已经有同名文件夹了')
+      else if (renameFolder(p, to)) S.set([FK + to])
+    }
+  } else {
+    const s = doc.sets.find((x) => x.id === k)
+    if (s && s.name !== n) { s.name = n; touch(s) }
+  }
+  focusList()
+}
+function cancelRename() { renaming.value = ''; focusList() }
 
-function onClick(s: PromptSet) { bulk.value ? toggle(s.id) : emit('update:selected', s.id) }
-
-// ---- drag reorder (manual sort, unfiltered order) ----
-const dragId = ref('')
-const canDrag = computed(() => sort.value === 'manual')
-// ---- Explorer-style folders ----
-const crumbs = computed(() => {
-  const parts = folder.value ? folder.value.split('/') : []
-  return parts.map((p, i) => ({ name: p, path: parts.slice(0, i + 1).join('/') }))
-})
-const subFolders = computed(() => {
-  const pre = folder.value ? folder.value + '/' : ''
-  return folders.value.filter((f) => f.startsWith(pre) && f.length > pre.length && !f.slice(pre.length).includes('/'))
-    .map((path) => {
-      const inside = doc.sets.filter((s) => s.folder === path || (s.folder || '').startsWith(path + '/'))
-      const cover = inside.find((s) => s.shots?.length)?.shots?.[0].id
-      return { path, name: path.slice(pre.length), count: inside.length, cover }
-    })
-})
-const browsing = computed(() => ui.explorer && !q.value.trim() && rating.value === 'ALL' && !label.value.length && !favOnly.value && !range.value && !layoutOnly.value && !shotsOnly.value && !status.value)
-function openFolder(p: string) { folder.value = p; sel.value = [] }
-// ---- 🎲 random set: for "I don't know what to run" ----
-// picks from what's currently visible (respects search/rating/filters; in Explorer view also subfolders)
+// ---- cut / copy / paste (Ctrl+X / C / V) ----
+const clip = ref<{ mode: 'cut' | 'copy'; keys: string[] } | null>(null)
+const isCut = (k: string) => clip.value?.mode === 'cut' && clip.value.keys.includes(k)
+function cut() { if (S.sel.value.length) { clip.value = { mode: 'cut', keys: [...S.sel.value] }; emit('toast', `已剪切 ${S.sel.value.length} 项，到目标文件夹按 Ctrl+V 粘贴`) } }
+function copy() {
+  if (!sel.value.length) return emit('toast', '文件夹不能复制，只能剪切移动')
+  clip.value = { mode: 'copy', keys: [...sel.value] }
+  emit('toast', `已复制 ${sel.value.length} 组，按 Ctrl+V 粘贴副本`)
+}
+function paste(target = ui.explorer ? folder.value : '') {
+  const c = clip.value
+  if (!c) return
+  const ids = c.keys.filter((k) => !isFolderKey(k)), fs = c.keys.filter(isFolderKey).map(folderOf)
+  if (c.mode === 'cut') {
+    const n = moveSets(ids, target) + moveFolders(fs, target)
+    clip.value = null
+    emit('toast', n ? `已移动 ${n} 项到 ${target || '根目录'}` : '已经在这个文件夹里了')
+  } else {
+    const made: string[] = []
+    for (const id of ids) { const d = duplicateSet(id); if (d) { d.folder = target || undefined; made.push(d.id) } }
+    S.set(made)
+    emit('toast', `已粘贴 ${made.length} 个副本`)
+  }
+}
+function duplicateSel() { if (sel.value.length) { clip.value = { mode: 'copy', keys: [...sel.value] }; paste(ui.explorer ? folder.value : ''); clip.value = null } }
+// ---- 🍡 random set ----
 const lastRand = ref('')
 function randomSet() {
   markUsed('random')
@@ -202,7 +312,6 @@ function randomSet() {
     : visible.value
   if (pool.length > 1) pool = pool.filter((s) => s.id !== lastRand.value)
   if (!pool.length) return emit('toast', '这里没有可抽的提示词组')
-  // sets with result images are a bit more likely: they're proven to work
   const w = pool.map((s) => (s.shots?.length ? 2 : 1) + (s.favorite ? 1 : 0))
   let r = Math.random() * w.reduce((a, b) => a + b, 0), i = 0
   while ((r -= w[i]) > 0 && i < pool.length - 1) i++
@@ -211,47 +320,107 @@ function randomSet() {
   emit('update:selected', s.id)
   emit('toast', `🍡 抽到：${s.name}${s.folder ? '（📁' + s.folder + '）' : ''}，再点一次换一个`)
 }
-function toggleView() { ui.explorer = !ui.explorer; folder.value = ''; markUsed('explorer') }
-function upFolder() { openFolder(folder.value.includes('/') ? folder.value.slice(0, folder.value.lastIndexOf('/')) : '') }
-function newFolder() {
-  const n = prompt('新建文件夹名称（可用 / 一次建多级）')
-  if (!n?.trim()) return
-  const p = createFolder((folder.value ? folder.value + '/' : '') + n.trim().replace(/^\/+/, ''))
-  if (p) emit('toast', '已新建文件夹：' + p)
-}
-const fmenu = ref<{ path: string; x: number; y: number } | null>(null)
-function folderMenu(e: MouseEvent, path: string) { fmenu.value = { path, x: e.clientX, y: e.clientY } }
-function renameF(path: string) {
-  fmenu.value = null
-  const n = prompt('重命名 / 移动文件夹（完整路径，用 / 分级）', path)
-  if (n === null) return
-  if (!renameFolder(path, n)) return emit('toast', '名称无效或与原来相同')
-  if (folder.value === path || folder.value.startsWith(path + '/')) folder.value = n.trim() + folder.value.slice(path.length)
-}
-function deleteF(path: string) {
-  fmenu.value = null
-  if (!confirm(`删除文件夹「${path}」？\n里面的提示词组不会被删，会移到上一级。`)) return
-  deleteFolder(path)
-}
-// drop a set (or the selected sets in bulk mode) onto a folder tile / breadcrumb
+
+// ---- drag & drop: reorder sets (manual sort) or move items into folders ----
+const dragKeys = ref<string[]>([])
+const canDrag = computed(() => sort.value === 'manual')
 const fHover = ref('')
+function dragStart(e: DragEvent, k: string) {
+  if (!S.has(k)) S.click({ shiftKey: false, ctrlKey: false, metaKey: false }, k)
+  dragKeys.value = [...S.sel.value]
+  e.dataTransfer?.setData('text/plain', dragKeys.value.join(','))
+  if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move'
+  // custom drag image showing how many items move
+  if (dragKeys.value.length > 1 && e.dataTransfer) {
+    const g = document.createElement('div'); g.className = 'drag-ghost'; g.textContent = `移动 ${dragKeys.value.length} 项`
+    document.body.appendChild(g); e.dataTransfer.setDragImage(g, 10, 10); setTimeout(() => g.remove())
+  }
+}
+function dragEnd() { dragKeys.value = []; fHover.value = '' }
 function dropOnFolder(path: string) {
   fHover.value = ''
-  const ids = bulk.value && sel.value.length ? sel.value : dragId.value ? [dragId.value] : []
-  dragId.value = ''
+  const ks = dragKeys.value
+  dragKeys.value = []
+  const fs = ks.filter(isFolderKey).map(folderOf).filter((f) => f !== path)
+  const n = moveSets(ks.filter((k) => !isFolderKey(k)), path) + moveFolders(fs, path)
+  if (n) emit('toast', `已移动 ${n} 项到 ${path || '根目录'}`)
+}
+function dropOnSet(t: PromptSet) {
+  const ids = dragKeys.value.filter((k) => !isFolderKey(k) && k !== t.id)
+  dragKeys.value = []
+  if (!ids.length || !canDrag.value) return
+  const moving = doc.sets.filter((s) => ids.includes(s.id))
+  const rest = doc.sets.filter((s) => !ids.includes(s.id))
+  const at = rest.findIndex((s) => s.id === t.id)
+  rest.splice(at < 0 ? rest.length : at, 0, ...moving)
+  doc.sets = rest
+}
+// ---- keyboard (list has focus) ----
+function cols(): number {
+  // items per row in card mode, for ↑/↓
+  const items = listEl.value?.querySelectorAll<HTMLElement>('[data-key]')
+  if (!items || items.length < 2 || mode.value !== 'mode-card') return 1
+  const top = items[0].offsetTop
   let n = 0
-  for (const s of doc.sets) if (ids.includes(s.id) && (s.folder || '') !== path) { s.folder = path || undefined; touch(s); n++ }
-  if (n) emit('toast', `已移动 ${n} 组到 ${path || '根目录'}`)
+  for (const it of items) { if (it.offsetTop !== top) break; n++ }
+  return Math.max(1, n)
+}
+function moveTo(d: number, shift: boolean) {
+  const k = S.move(d, shift)
+  if (!k) return
+  scrollTo(k)
+  if (!shift && !isFolderKey(k)) emit('update:selected', k)
+}
+function onListKey(e: KeyboardEvent) {
+  if (renaming.value || (e.target as HTMLElement).closest('input, textarea, select')) return
+  const ctrl = e.ctrlKey || e.metaKey, k = e.key
+  const go = (fn: () => void) => { e.preventDefault(); fn() }
+  if (e.altKey && k === 'ArrowLeft') return go(goBack)
+  if (e.altKey && k === 'ArrowRight') return go(goFwd)
+  if (e.altKey && k === 'ArrowUp') return go(upFolder)
+  if (k === 'ArrowDown') return go(() => moveTo(cols(), e.shiftKey))
+  if (k === 'ArrowUp') return go(() => moveTo(-cols(), e.shiftKey))
+  if (k === 'ArrowRight' && cols() > 1) return go(() => moveTo(1, e.shiftKey))
+  if (k === 'ArrowLeft' && cols() > 1) return go(() => moveTo(-1, e.shiftKey))
+  if (k === 'Home') return go(() => moveTo(-1e9, e.shiftKey))
+  if (k === 'End') return go(() => moveTo(1e9, e.shiftKey))
+  if (k === 'Enter') return go(() => { const f = S.focus.value; if (f) isFolderKey(f) ? openFolder(folderOf(f)) : emit('update:selected', f) })
+  if (k === 'Backspace') return go(goBack)
+  if (k === 'F2') return go(() => { const f = S.focus.value || S.sel.value[0]; if (f) startRename(f) })
+  if (k === 'Delete') return go(deleteSelected)
+  if (k === 'Escape') return go(() => { S.clear(); clip.value = null })
+  if (ctrl && e.shiftKey && k.toLowerCase() === 'n') return go(newFolder)
+  if (!ctrl) return
+  const c = k.toLowerCase()
+  if (c === 'a') return go(S.all)
+  if (c === 'x') return go(cut)
+  if (c === 'c') return go(copy)
+  if (c === 'v') return go(() => paste())
+  if (c === 'd') return go(duplicateSel)
+}
+// mouse side buttons = back / forward (like Explorer)
+function onAux(e: PointerEvent) {
+  if (e.button === 3) { e.preventDefault(); goBack() }
+  if (e.button === 4) { e.preventDefault(); goFwd() }
+}
+function onListDown(e: PointerEvent) {
+  if (e.button === 3 || e.button === 4) return onAux(e)
+  ctx.value = null
+  mq.start(e, S.sel.value)
 }
 
-function drop(t: PromptSet) {
-  const from = doc.sets.findIndex((s) => s.id === dragId.value)
-  const to = doc.sets.findIndex((s) => s.id === t.id)
-  dragId.value = ''
-  if (from < 0 || to < 0 || from === to) return
-  const [m] = doc.sets.splice(from, 1)
-  doc.sets.splice(to, 0, m)
+// ---- right-click menu ----
+const ctx = ref<{ x: number; y: number; k: string } | null>(null)
+function openCtx(e: MouseEvent, k = '') {
+  e.preventDefault()
+  if (k && !S.has(k)) S.click({ shiftKey: false, ctrlKey: false, metaKey: false }, k)
+  if (!k) S.clear()
+  ctx.value = { x: Math.min(e.clientX, innerWidth - 190), y: Math.min(e.clientY, innerHeight - 300), k }
 }
+function ctxDo(fn: () => void) { ctx.value = null; fn(); focusList() }
+function ctxOpen() { const k = ctx.value?.k; if (k) isFolderKey(k) ? openFolder(folderOf(k)) : emit('update:selected', k) }
+function newSetHere() { create() }
+// ==SB-6==
 </script>
 
 <template>
@@ -317,26 +486,25 @@ function drop(t: PromptSet) {
       </template>
 
       <div class="row" style="margin-top: 8px; gap: 4px; flex-wrap: wrap">
-        <button class="ghost sm" @click="bulk = !bulk; sel = []; markUsed('bulk')"><Icon name="checklist" /> {{ bulk ? '完成' : '批量' }}</button>
-        <span class="muted" style="font-size: 12px">{{ visible.length }} 组</span>
-        <template v-if="bulk">
-          <button class="ghost sm" @click="selectAll">全选</button>
-          <span class="muted" style="font-size: 12px">已选 {{ sel.length }}</span>
-        </template>
+        <button :class="['sm', bulk ? 'on' : 'ghost']" title="显示勾选框（不开也能 Ctrl / Shift 多选、拖框选）" @click="bulk = !bulk; markUsed('bulk')"><Icon name="checklist" /> {{ bulk ? '完成' : '勾选' }}</button>
+        <button class="ghost sm" title="全选（Ctrl+A）" @click="S.all()">全选</button>
+        <button v-if="S.sel.value.length" class="ghost sm" title="取消选择（Esc）" @click="S.clear()">取消</button>
       </div>
-      <div v-if="bulk && sel.length" class="row" style="margin-top: 4px; gap: 4px; flex-wrap: wrap">
-        <select class="sm" @change="bulkRating(($event.target as HTMLSelectElement).value); ($event.target as HTMLSelectElement).value = ''">
+      <div v-if="sel.length || selFolders.length" class="row sel-bar" style="margin-top: 4px; gap: 4px; flex-wrap: wrap">
+        <select v-if="sel.length" class="sm" @change="bulkRating(($event.target as HTMLSelectElement).value); ($event.target as HTMLSelectElement).value = ''">
           <option value="">分级…</option>
           <option v-for="c in CATEGORIES" :key="c" :value="c">{{ RATING_LABEL[c] }}</option>
           <option value="NONE">未分级</option>
         </select>
-        <button class="ghost sm" @click="bulkFolder">移动</button>
-        <button class="ghost sm" @click="bulkLabel(true)">+标签</button>
-        <button class="ghost sm" @click="bulkLabel(false)">−标签</button>
-        <button class="ghost sm" :disabled="!!aiBusy" @click="bulkClassify">{{ aiBusy || '✨AI 整理' }}</button>
-        <button class="ghost sm" @click="bulkMerge">合并</button>
-        <button class="ghost sm" @click="emit('export', sel)">导出</button>
-        <button class="ghost danger sm" @click="bulkDelete">删除</button>
+        <button class="ghost sm" title="移动到文件夹（也可以剪切 Ctrl+X 再到目标处粘贴 Ctrl+V，或直接拖到文件夹上）" @click="bulkFolder">移动</button>
+        <template v-if="sel.length">
+          <button class="ghost sm" @click="bulkLabel(true)">+标签</button>
+          <button class="ghost sm" @click="bulkLabel(false)">−标签</button>
+          <button class="ghost sm" :disabled="!!aiBusy" @click="bulkClassify">{{ aiBusy || '✨AI 整理' }}</button>
+          <button v-if="sel.length > 1" class="ghost sm" @click="bulkMerge">合并</button>
+          <button class="ghost sm" @click="emit('export', sel)">导出</button>
+        </template>
+        <button class="ghost danger sm" title="Delete" @click="deleteSelected">删除</button>
       </div>
     </div>
 
@@ -345,44 +513,55 @@ function drop(t: PromptSet) {
       <input v-model.number="ui.cardSize" type="range" min="0" max="100" step="1" title="调整列表大小：越小越紧凑，越大图越清晰" />
       <span title="放大：大图卡片">▦</span>
     </div>
-    <div v-if="ui.explorer" class="crumbs" @click="fmenu = null">
-      <button class="ghost sm" :disabled="!folder" title="上一级" @click="upFolder">↑</button>
-      <span :class="['crumb', { hover: fHover === '/' }]" @click="openFolder('')"
-        @dragover.prevent="fHover = '/'" @dragleave="fHover = ''" @drop.prevent="dropOnFolder('')">🏠 全部</span>
-      <template v-for="c in crumbs" :key="c.path">
-        <span class="muted">›</span>
-        <span :class="['crumb', { hover: fHover === c.path }]" :title="c.path" @click="openFolder(c.path)"
-          @dragover.prevent="fHover = c.path" @dragleave="fHover = ''" @drop.prevent="dropOnFolder(c.path)">{{ c.name }}</span>
-      </template>
-      <span class="spacer" />
-      <button class="ghost sm" title="在这里新建文件夹" @click="newFolder">＋<Icon name="folder" /></button>
+    <div v-if="ui.explorer" class="crumbs">
+      <button class="ghost sm nav-btn" :disabled="!back.length" title="后退（Alt+← / Backspace / 鼠标侧键）" @click="goBack">←</button>
+      <button class="ghost sm nav-btn" :disabled="!fwd.length" title="前进（Alt+→）" @click="goFwd">→</button>
+      <button class="ghost sm nav-btn" :disabled="!folder" title="上一级（Alt+↑）" @click="upFolder">↑</button>
+      <div class="crumb-path">
+        <span :class="['crumb', { hover: fHover === '/' }]" @click="openFolder('')"
+          @dragover.prevent="fHover = '/'" @dragleave="fHover = ''" @drop.prevent="dropOnFolder('')">🏠 全部</span>
+        <template v-for="c in crumbs" :key="c.path">
+          <span class="muted">›</span>
+          <span :class="['crumb', { hover: fHover === c.path }]" :title="c.path" @click="openFolder(c.path)"
+            @dragover.prevent="fHover = c.path" @dragleave="fHover = ''" @drop.prevent="dropOnFolder(c.path)">{{ c.name }}</span>
+        </template>
+      </div>
+      <button class="ghost sm" title="新建文件夹（Ctrl+Shift+N）" @click="newFolder">＋<Icon name="folder" /></button>
     </div>
-    <div :class="['side-list', mode, { 'img-only': ui.cardSize >= 85 }]" :style="listStyle" @click="fmenu = null">
-      <template v-if="browsing">
-        <div v-for="f in subFolders" :key="f.path" :class="['set-item', 'folder-item', { hover: fHover === f.path }]" :title="f.path"
-          @click="openFolder(f.path)" @contextmenu.prevent="folderMenu($event, f.path)"
-          @dragover.prevent="fHover = f.path" @dragleave="fHover = ''" @drop.prevent.stop="dropOnFolder(f.path)">
-          <div v-if="mode !== 'mode-list'" class="thumb folder-thumb">
-            <img v-if="f.cover && imgSrc(f.cover)" :src="imgSrc(f.cover)" />
-            <span class="folder-ico">📁</span>
-          </div>
-          <div class="set-text">
-            <div class="set-name"><span v-if="mode === 'mode-list'">📁 </span>{{ f.name }}</div>
-            <div class="set-sub"><span class="muted">{{ f.count }} 组</span></div>
-          </div>
-          <button class="ghost sm folder-more" title="重命名 / 删除" @click.stop="folderMenu($event, f.path)">⋯</button>
+    <div v-else class="crumbs">
+      <span class="muted" style="font-size: 12px">经典列表</span>
+      <span class="spacer" />
+      <button class="ghost sm" title="新建文件夹（会切到资源管理器视图）" @click="newFolder">＋<Icon name="folder" /></button>
+    </div>
+    <div ref="listEl" :class="['side-list', mode, { 'img-only': ui.cardSize >= 85 }]" :style="listStyle" tabindex="0"
+      @keydown="onListKey" @pointerdown="onListDown" @contextmenu.self="openCtx($event)" @auxclick.prevent>
+      <div v-for="f in shownFolders" :key="f.path" :data-key="FK + f.path"
+        :class="['set-item', 'folder-item', { hover: fHover === f.path, picked: S.has(FK + f.path), focus: S.focus.value === FK + f.path, cut: isCut(FK + f.path) }]"
+        :title="f.path + '（双击打开）'" draggable="true"
+        @click="itemClick($event, FK + f.path)" @dblclick="itemDbl(FK + f.path)" @contextmenu.prevent="openCtx($event, FK + f.path)"
+        @dragstart="dragStart($event, FK + f.path)" @dragend="dragEnd"
+        @dragover.prevent="fHover = f.path" @dragleave="fHover = ''" @drop.prevent.stop="dropOnFolder(f.path)">
+        <input v-if="bulk" type="checkbox" :checked="S.has(FK + f.path)" style="width: auto; pointer-events: none" tabindex="-1" />
+        <div v-if="mode !== 'mode-list'" class="thumb folder-thumb">
+          <img v-if="f.cover && imgSrc(f.cover)" :src="imgSrc(f.cover)" />
+          <span class="folder-ico">📁</span>
         </div>
-      </template>
+        <div class="set-text">
+          <input v-if="renaming === FK + f.path" v-model="renameText" class="rename-input"
+            @keydown.enter.stop.prevent="commitRename" @keydown.esc.stop.prevent="cancelRename" @blur="commitRename" @click.stop @pointerdown.stop />
+          <div v-else class="set-name"><span v-if="mode === 'mode-list'">📁 </span>{{ f.name }}</div>
+          <div class="set-sub"><span class="muted">{{ f.count ? f.count + ' 组' : '空文件夹' }}</span></div>
+        </div>
+      </div>
       <template v-for="(s, i) in visible" :key="s.id">
       <div v-if="bucketAt(i)" class="date-head">{{ bucketAt(i) }}</div>
-      <div
-        :class="['set-item', { on: s.id === selected, picked: sel.includes(s.id) }]"
-        :draggable="canDrag && !bulk" @click="!bulk && onClick(s)"
-        @mousedown="bulk && ds.start($event, s.id, sel.includes(s.id), setSel)" @mouseenter="bulk && ds.over(s.id)" @dragstart="dragId = s.id; $event.dataTransfer?.setData('text/plain', s.id)" @dragend="dragId = ''"
-        @dragover.prevent @drop.prevent="drop(s)">
-        <input v-if="bulk" type="checkbox" :checked="sel.includes(s.id)" style="width: auto; pointer-events: none" tabindex="-1" />
+      <div :data-key="s.id"
+        :class="['set-item', { on: s.id === selected, picked: S.has(s.id), focus: S.focus.value === s.id, cut: isCut(s.id) }]"
+        draggable="true" @click="itemClick($event, s.id)" @dblclick="startRename(s.id)" @contextmenu.prevent="openCtx($event, s.id)"
+        @dragstart="dragStart($event, s.id)" @dragend="dragEnd" @dragover.prevent @drop.prevent="dropOnSet(s)">
+        <input v-if="bulk" type="checkbox" :checked="S.has(s.id)" style="width: auto; pointer-events: none" tabindex="-1" />
         <div v-if="mode !== 'mode-list'" :class="['thumb', { multi: (s.shots?.length || 0) > 1, many: (s.shots?.length || 0) > 2 }]">
-          <img v-if="s.shots?.length && imgSrc(s.shots[0].id)" :src="imgSrc(s.shots[0].id)" />
+          <img v-if="s.shots?.length && imgSrc(s.shots[0].id)" :src="imgSrc(s.shots[0].id)" draggable="false" />
           <LayoutMini v-else-if="hasLayout(s)" :set="s" :size="mode === 'mode-row' ? 40 : 120" class="thumb-layout" />
           <span v-else>{{ s.name.slice(0, 1) }}</span>
           <LayoutMini v-if="hasLayout(s) && s.shots?.length && mode !== 'mode-row'" :set="s" :size="34" class="thumb-corner" />
@@ -394,13 +573,15 @@ function drop(t: PromptSet) {
           </template>
         </div>
         <div class="set-text">
-          <div class="set-name" :title="s.name">
+          <input v-if="renaming === s.id" v-model="renameText" class="rename-input"
+            @keydown.enter.stop.prevent="commitRename" @keydown.esc.stop.prevent="cancelRename" @blur="commitRename" @click.stop @pointerdown.stop />
+          <div v-else class="set-name" :title="s.name + '（双击 / F2 重命名）'">
             <span :class="['st-dot', 'st-' + setStatus(s)]" :title="STATUS_INFO[setStatus(s)].label + '：' + STATUS_INFO[setStatus(s)].hint" />
             <span v-if="s.favorite" style="color: var(--star)">★</span>{{ s.name }}
           </div>
           <div class="set-sub">
             <span v-if="s.category" :class="['rtag', 'r-' + s.category]">{{ RATING_LABEL[s.category] }}</span>
-            <span v-if="s.folder" class="muted">📁{{ s.folder }}</span>
+            <span v-if="s.folder && !browsing" class="muted">📁{{ s.folder }}</span>
             <span class="muted">{{ s.tags.length }}词</span>
             <span v-if="hasLayout(s)" class="layout-tag" :title="s.regions!.length + ' 个框' + (s.canvas ? '，' + s.canvas.w + '×' + s.canvas.h : '')">▦ {{ s.regions!.length }}框</span>
             <span v-if="s.shots?.length" class="muted">🖼{{ s.shots.length }}</span>
@@ -410,12 +591,41 @@ function drop(t: PromptSet) {
         </div>
       </div>
       </template>
-      <p v-if="!visible.length && !(browsing && subFolders.length)" class="muted" style="text-align: center; margin-top: 20px">{{ browsing ? (folder ? "这个文件夹是空的，可以把提示词组拖到上面的路径或文件夹里" : "还没有提示词组") : "没有匹配的提示词组" }}</p>
+      <p v-if="!visible.length && !shownFolders.length" class="muted empty-hint" @contextmenu.prevent="openCtx($event)">{{ browsing ? (folder ? '这个文件夹是空的。可以把提示词组拖进来，或右键新建。' : '还没有提示词组') : '没有匹配的提示词组' }}</p>
+      <div v-if="mq.rect.value" class="marquee" :style="{ left: mq.rect.value.x + 'px', top: mq.rect.value.y + 'px', width: mq.rect.value.w + 'px', height: mq.rect.value.h + 'px' }" />
     </div>
-    <div v-if="fmenu" class="ctx-menu" :style="{ left: fmenu.x + 'px', top: fmenu.y + 'px' }">
-      <button class="ghost" @click="openFolder(fmenu.path); fmenu = null">打开</button>
-      <button class="ghost" @click="renameF(fmenu.path)">重命名 / 移动</button>
-      <button class="ghost danger" @click="deleteF(fmenu.path)">删除文件夹</button>
+    <div class="status-bar">
+      <span>{{ shownFolders.length ? shownFolders.length + ' 个文件夹，' : '' }}{{ visible.length }} 组</span>
+      <span v-if="S.sel.value.length" class="sel-n">已选 {{ S.sel.value.length }} 项</span>
+      <span v-if="clip" class="muted">{{ clip.mode === 'cut' ? '已剪切' : '已复制' }} {{ clip.keys.length }} 项</span>
+      <span class="spacer" />
+      <span class="muted kb-hint" title="单击选中 · Ctrl+单击 加选 · Shift+单击 连选 · 空白处拖动 框选 · 双击文件夹 打开 · F2 重命名 · Delete 删除 · Ctrl+X/C/V 剪切/复制/粘贴 · Ctrl+D 创建副本 · Ctrl+A 全选 · Ctrl+Shift+N 新建文件夹 · Alt+←/→/↑ 后退/前进/上一级">⌨ 快捷键</span>
     </div>
+    <Teleport to="body">
+      <div v-if="ctx" class="ctx-backdrop" @pointerdown="ctx = null" @contextmenu.prevent="ctx = null" />
+      <div v-if="ctx" class="ctx-menu" :style="{ left: ctx.x + 'px', top: ctx.y + 'px' }">
+        <template v-if="ctx.k">
+          <button v-if="S.sel.value.length === 1" class="ghost" @click="ctxDo(ctxOpen)">打开<kbd>Enter</kbd></button>
+          <button v-if="S.sel.value.length === 1" class="ghost" @click="ctxDo(() => startRename(ctx!.k))">重命名<kbd>F2</kbd></button>
+          <hr />
+          <button class="ghost" @click="ctxDo(cut)">剪切<kbd>Ctrl+X</kbd></button>
+          <button v-if="sel.length" class="ghost" @click="ctxDo(copy)">复制<kbd>Ctrl+C</kbd></button>
+          <button v-if="clip && isFolderKey(ctx.k) && S.sel.value.length === 1" class="ghost" @click="ctxDo(() => paste(folderOf(ctx!.k)))">粘贴到这个文件夹</button>
+          <button v-if="sel.length" class="ghost" @click="ctxDo(duplicateSel)">创建副本<kbd>Ctrl+D</kbd></button>
+          <button class="ghost" @click="ctxDo(bulkFolder)">移动到…</button>
+          <button v-if="sel.length" class="ghost" @click="ctxDo(() => emit('export', sel))">导出</button>
+          <hr />
+          <button class="ghost danger" @click="ctxDo(deleteSelected)">删除<kbd>Delete</kbd></button>
+        </template>
+        <template v-else>
+          <button class="ghost" @click="ctxDo(newFolder)">新建文件夹<kbd>Ctrl+Shift+N</kbd></button>
+          <button class="ghost" @click="ctxDo(newSetHere)">新建提示词组</button>
+          <hr />
+          <button class="ghost" :disabled="!clip" @click="ctxDo(() => paste())">粘贴<kbd>Ctrl+V</kbd></button>
+          <button class="ghost" @click="ctxDo(S.all)">全选<kbd>Ctrl+A</kbd></button>
+          <button v-if="ui.explorer && folder" class="ghost" @click="ctxDo(upFolder)">返回上一级<kbd>Alt+↑</kbd></button>
+        </template>
+      </div>
+    </Teleport>
   </aside>
 </template>
