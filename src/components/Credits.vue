@@ -34,7 +34,7 @@ onBeforeUnmount(() => { window.removeEventListener('keydown', onKey); window.rem
       <p class="muted" style="margin: 0 0 14px">你发现了隐藏菜单</p>
       <div class="muted" style="font-size: .86em">作者</div>
       <div class="credits-name">{{ who }}</div>
-      <div class="muted" style="font-size: .78em; margin-top: 14px">界面图标：Fluent Emoji（Microsoft，MIT 许可）· 看板娘插画由 AI 生成</div>
+      <div class="muted" style="font-size: .78em; margin-top: 14px">界面图标：Fluent Emoji（Microsoft，MIT 许可）· 看板娘是作者本人的形象（插画由 AI 按原图重绘）</div>
       <button class="primary" style="margin-top: 18px" @click="open = false">好耶</button>
     </div>
   </div>

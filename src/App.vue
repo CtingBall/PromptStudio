@@ -33,6 +33,8 @@ import { checkLayout } from './lib/layout'
 import { elementsJson, gbcText, mossJson, injectWorkflow, loadTemplate, saveTemplate, download } from './lib/comfy'
 import type { GenMode } from './lib/translate'
 import type { GenSection } from './lib/translate'
+import { burstHere, burst } from './lib/fx'
+import Petals from './components/Petals.vue'
 
 const selectedId = ref(doc.sets[0]?.id || '')
 const current = computed<PromptSet | undefined>(() => doc.sets.find((s) => s.id === selectedId.value))
@@ -238,7 +240,7 @@ async function copyPrompt(headers = true) {
   if (!current.value) return
   try {
     await navigator.clipboard.writeText(promptText(current.value, headers))
-    markCopied(current.value)
+    markCopied(current.value); burstHere()
     flash(headers ? '已复制（带分段标题）' : '已复制（单行）')
   } catch (e: any) {
     flash('复制失败：' + (e?.message || e))
@@ -412,6 +414,7 @@ function applyGenerated(p: { name: string; prefix: string; sections: GenSection[
   doc.sets.unshift(set)
   selectedId.value = set.id
   showGen.value = false
+  burst({ x: innerWidth / 2, y: innerHeight / 3 }, 20)
   if (settings().autoTranslate) translateMissing(true)
 }
 
@@ -447,7 +450,7 @@ async function copyBboxes() {
   if (!current.value) return
   try {
     await navigator.clipboard.writeText(bboxJson(current.value))
-    markCopied(current.value)
+    markCopied(current.value); burstHere()
     flash('已复制框坐标 JSON')
   } catch (e: any) {
     flash('复制失败：' + (e?.message || e))
@@ -494,7 +497,7 @@ async function copyGbc() {
   if (!s) return
   try {
     await navigator.clipboard.writeText(gbcText(s, settings().gbcTail ?? DEFAULT_GBC_TAIL))
-    markCopied(current.value)
+    markCopied(current.value); burstHere()
     flash('已复制 GBC 格式：直接粘进正向提示词（MOSS-Image-heal 等）')
   } catch (e: any) {
     flash('复制失败：' + (e?.message || e))
@@ -505,7 +508,7 @@ async function copyMoss() {
   if (!s) return
   try {
     await navigator.clipboard.writeText(mossJson(s, promptText(s, false), doc.settings.firstLine || ''))
-    markCopied(current.value)
+    markCopied(current.value); burstHere()
     const w = checkLayout(s.regions || [])
     flash('已复制 MOSS 布局 JSON：直接粘进正向提示词（文本编码器）' + (w.length ? '。⚠ ' + w.join('；') : ''), w.length ? 7000 : 3500)
   } catch (e: any) {
@@ -516,7 +519,7 @@ async function copyComfy() {
   if (!current.value) return
   try {
     await navigator.clipboard.writeText(elementsJson(current.value))
-    markCopied(current.value)
+    markCopied(current.value); burstHere()
     const w = checkLayout(current.value.regions || [])
     flash('已复制：粘进文本节点 → 接到 Create Bounding Boxes 的 bboxes' + (w.length ? '。⚠ ' + w.join('；') : ''), w.length ? 7000 : 3500)
   } catch (e: any) {
@@ -635,7 +638,7 @@ function clampMaxImages() {
       <Sidebar v-model:selected="selectedId" @toast="flash" @export="openXfer('export', $event)" />
       <div class="splitter" title="拖动调整宽度" @pointerdown="startSide" @dblclick="ui.sideW = 280" />
 
-      <main v-if="current" class="main" data-tour="editor">
+      <main v-if="current" :key="current.id" class="main fx-enter" data-tour="editor">
         <div v-if="busyMsg" class="busy-bar"><span class="spin" />{{ busyMsg }}</div>
         <div class="set-hero">
           <div class="hero-cover" :title="current.shots?.length ? '封面：第一张返图' : '还没有返图'">
@@ -649,7 +652,7 @@ function clampMaxImages() {
               <input v-model="current.name" class="title-input" @change="touch(current!)" />
             </div>
             <div class="row wrap hero-meta">
-              <span :class="['status-pill', 'st-' + curStatus]" :title="STATUS_INFO[curStatus].hint"><Icon :name="STATUS_INFO[curStatus].icon" />{{ STATUS_INFO[curStatus].label }}</span>
+              <span :key="curStatus" :class="['status-pill', 'st-' + curStatus]" :title="STATUS_INFO[curStatus].hint"><Icon :name="STATUS_INFO[curStatus].icon" />{{ STATUS_INFO[curStatus].label }}</span>
               <span class="muted set-date" :title="'创建 ' + fmtDate(current.createdAt, true) + '\n修改 ' + fmtDate(current.updatedAt, true)">{{ fmtDate(current.createdAt) }}</span>
               <span v-if="current.copiedAt" class="muted" :title="fmtDate(current.copiedAt, true)">· 上次复制 {{ fmtDate(current.copiedAt) }}</span>
               <select v-model="current.category" :class="['sm', current.category ? 'r-' + current.category : '']" style="width: auto" @change="touch(current!)">
@@ -799,7 +802,8 @@ function clampMaxImages() {
       </template>
     </div>
 
-    <div v-if="toast" class="toast">{{ toast }}</div>
+    <Transition name="toast"><div v-if="toast" :key="toast" class="toast">{{ toast }}</div></Transition>
+    <Petals v-if="ui.motion && ui.petals" />
 
     <!-- raw edit modal -->
     <div v-if="rawEdit" class="modal-mask">
@@ -883,6 +887,8 @@ function clampMaxImages() {
             <label class="row">缩放 {{ ui.scale }}%
               <input v-model.number="ui.scale" type="range" min="70" max="150" step="5" style="width: 140px" /></label>
             <label class="row"><input v-model="ui.compact" type="checkbox" style="width: auto" />紧凑模式</label>
+            <label class="row"><input v-model="ui.motion" type="checkbox" style="width: auto" />动画效果</label>
+            <label class="row"><input v-model="ui.petals" type="checkbox" style="width: auto" :disabled="!ui.motion" />飘落樱花</label>
           </div>
           <h5>数据</h5>
           <div class="row" style="gap: 8px">

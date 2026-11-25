@@ -1,4 +1,13 @@
-<svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+<svg width="38" height="38" viewBox="-3 -3 38 38" fill="none" xmlns="http://www.w3.org/2000/svg"><defs><filter id="stk" x="-25%" y="-25%" width="150%" height="150%" color-interpolation-filters="sRGB">
+<feTurbulence type="fractalNoise" baseFrequency=".18" numOctaves="2" seed="7" result="n"/>
+<feMorphology in="SourceAlpha" operator="dilate" radius="1.7" result="d"/>
+<feDisplacementMap in="d" in2="n" scale="1.6" xChannelSelector="R" yChannelSelector="G" result="dw"/>
+<feMorphology in="dw" operator="dilate" radius=".55" result="d2"/>
+<feFlood flood-color="#4a2a3c" flood-opacity=".7"/><feComposite in2="d2" operator="in" result="ink"/>
+<feOffset in="ink" dx=".7" dy="1.1" result="sh0"/><feGaussianBlur in="sh0" stdDeviation=".5" result="sh"/>
+<feFlood flood-color="#fff"/><feComposite in2="dw" operator="in" result="white"/>
+<feMerge><feMergeNode in="sh"/><feMergeNode in="ink"/><feMergeNode in="white"/><feMergeNode in="SourceGraphic"/></feMerge>
+</filter></defs><g filter="url(#stk)">
 <path d="M7.18681 3C5.95783 3 5 4.01273 5 5.21401V28.6848C5 29.2649 5.21521 29.8565 5.66704 30.3042C6.12651 30.7595 6.76273 31 7.48352 31H17.7929C17.8546 31 17.9159 30.9962 17.9766 30.9887C18.0503 30.9962 18.1248 31 18.2 31H23.8C25.015 31 26 30.015 26 28.8V5.2C26 3.98497 25.015 3 23.8 3H22.9251C22.9063 3 22.8876 3.00024 22.8689 3.00071C22.8504 3.00024 22.8318 3 22.8132 3H7.18681Z" fill="#B4ACBC"/>
 <path d="M21.7646 4.89461C21.9033 4.36743 22.3799 4 22.9251 4H23.8C24.4627 4 25 4.53726 25 5.2V28.8C25 29.4627 24.4627 30 23.8 30H18.2C17.5373 30 17 29.4627 17 28.8V23.1553C17 23.0522 17.0133 22.9495 17.0395 22.8499L21.7646 4.89461Z" fill="#CDC4D6"/>
 <path d="M6 5.21401C6 4.54353 6.53135 4 7.18681 4H22.8132C23.4686 4 24 4.54353 24 5.21401V24L18.1464 29.8536C18.0527 29.9473 17.9255 30 17.7929 30H7.48352C6.49451 30 6 29.3553 6 28.6848V5.21401Z" fill="#F3EEF8"/>
@@ -8,4 +17,4 @@
 <path d="M8 13.5C8 13.2239 8.22386 13 8.5 13H21.5C21.7761 13 22 13.2239 22 13.5C22 13.7761 21.7761 14 21.5 14H8.5C8.22386 14 8 13.7761 8 13.5Z" fill="#998EA4"/>
 <path d="M8.5 16C8.22386 16 8 16.2239 8 16.5C8 16.7761 8.22386 17 8.5 17H21.5C21.7761 17 22 16.7761 22 16.5C22 16.2239 21.7761 16 21.5 16H8.5Z" fill="#998EA4"/>
 <path d="M8.5 19C8.22386 19 8 19.2239 8 19.5C8 19.7761 8.22386 20 8.5 20H15.5C15.7761 20 16 19.7761 16 19.5C16 19.2239 15.7761 19 15.5 19H8.5Z" fill="#998EA4"/>
-</svg>
+</g></svg>

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { burst } from '../lib/fx'
 // Step-by-step guided tour. Shown on first launch and once after each tour version bump.
 // Steps with `at` spotlight the element marked data-tour="<at>".
 import { ref, computed, onMounted, onBeforeUnmount, nextTick, watch } from 'vue'
@@ -39,7 +40,7 @@ function locate() {
 watch(i, () => nextTick(locate))
 onMounted(() => { nextTick(locate); window.addEventListener('resize', locate); window.addEventListener('keydown', key) })
 onBeforeUnmount(() => { window.removeEventListener('resize', locate); window.removeEventListener('keydown', key) })
-function go(d: number) { const n = i.value + d; if (n < 0) return; if (n >= STEPS.length) return emit('close'); i.value = n }
+function go(d: number) { const n = i.value + d; if (n < 0) return; if (n >= STEPS.length) { burst({ x: innerWidth / 2, y: innerHeight / 2 }, 24); return emit('close') } i.value = n }
 function key(e: KeyboardEvent) {
   if (e.key === 'Escape') emit('close')
   else if (e.key === 'ArrowRight' || e.key === 'Enter') go(1)
@@ -70,7 +71,7 @@ const cardStyle = computed(() => {
       <rect width="100%" height="100%" fill="rgba(8,4,16,.62)" mask="url(#tour-hole)" />
     </svg>
     <div v-if="box" class="tour-ring" :style="{ left: box.x + 'px', top: box.y + 'px', width: box.w + 'px', height: box.h + 'px' }" />
-    <div :class="['tour-card', { center: !box }]" :style="cardStyle">
+    <div :key="i" :class="['tour-card', { center: !box }]" :style="cardStyle">
       <img v-if="step.art" :src="step.art" class="tour-art" alt="" />
       <div class="tour-title"><Icon :name="step.icon" :size="26" /><b>{{ step.title }}</b></div>
       <p>{{ step.text }}</p>
@@ -94,6 +95,8 @@ const cardStyle = computed(() => {
 @keyframes tour-pulse { 50% { box-shadow: 0 0 0 8px var(--accent-soft), 0 0 30px var(--accent); } }
 .tour-card { position: absolute; width: 380px; max-width: calc(100vw - 24px); background: var(--panel); color: var(--text);
   border: 1px solid var(--border2); border-radius: 18px; padding: 16px 18px; box-shadow: var(--shadow); transition: all .25s ease; }
+.tour-card { animation: tour-in .3s cubic-bezier(.3,1.4,.5,1); }
+@keyframes tour-in { from { opacity: 0; margin-top: 10px } }
 .tour-card.center { left: 50%; top: 50%; transform: translate(-50%, -50%); width: 520px; }
 .tour-art { width: 100%; border-radius: 12px; margin-bottom: 10px; display: block; max-height: 300px; object-fit: cover; }
 .tour-title { display: flex; align-items: center; gap: 8px; font-size: 1.1em; }

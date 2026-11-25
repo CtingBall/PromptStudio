@@ -492,3 +492,49 @@ button.primary:hover { filter: brightness(1.07); border-color: transparent; }
   background: #ff4d8d; color: #fff; letter-spacing: .5px; }
 .mode-row .ov-new, .mode-list .ov-new { display: none; }
 @media (max-width: 1100px) { .rail { width: 100%; flex-direction: row; height: auto; padding: 6px; } .rail .spacer { display: none; } }
+
+/* ==== v0.4 motion ==== */
+.fx-layer { position: fixed; inset: 0; pointer-events: none; z-index: 200; }
+.fx-p { position: absolute; font-size: 14px; color: var(--accent); filter: hue-rotate(calc(var(--hue) * 1deg));
+  text-shadow: 0 0 6px var(--accent-soft); animation: fx-fly .9s cubic-bezier(.2,.7,.3,1) forwards; }
+@keyframes fx-fly { 0% { transform: translate(-50%,-50%) scale(.3); opacity: 1 }
+  70% { opacity: 1 } 100% { transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy) + 24px)) rotate(var(--rot)) scale(1); opacity: 0 } }
+.fx-enter { animation: fx-slide .32s cubic-bezier(.2,.8,.3,1); }
+@keyframes fx-slide { from { opacity: 0; transform: translateX(14px) } }
+.fx-enter .set-hero { animation: popIn .4s cubic-bezier(.2,.8,.3,1) both; }
+.fx-enter .section { animation: popIn .4s cubic-bezier(.2,.8,.3,1) both; }
+.fx-enter .section:nth-of-type(2) { animation-delay: .05s } .fx-enter .section:nth-of-type(3) { animation-delay: .1s }
+.fx-enter .section:nth-of-type(4) { animation-delay: .15s } .fx-enter .section:nth-of-type(5) { animation-delay: .2s }
+.fx-enter .chip-grid > * { animation: chip-in .35s cubic-bezier(.3,1.5,.5,1) both; }
+.fx-enter .chip-grid > *:nth-child(n+2) { animation-delay: .02s } .fx-enter .chip-grid > *:nth-child(n+5) { animation-delay: .05s }
+.fx-enter .chip-grid > *:nth-child(n+10) { animation-delay: .08s } .fx-enter .chip-grid > *:nth-child(n+20) { animation-delay: .12s }
+@keyframes chip-in { from { opacity: 0; transform: scale(.6) } }
+.toast-enter-active { animation: toastIn .3s cubic-bezier(.3,1.4,.5,1); }
+.toast-leave-active { transition: opacity .2s, transform .2s; }
+.toast-leave-to { opacity: 0; transform: translate(-50%, 10px) scale(.95); }
+button { transition: transform .12s, background .15s, box-shadow .15s, filter .15s; }
+button:not(:disabled):active { transform: scale(.94); }
+button.primary:not(:disabled):hover { box-shadow: 0 4px 16px var(--accent-soft); filter: brightness(1.06); }
+.rail-btn:hover .ico { animation: wiggle .45s ease; }
+@keyframes wiggle { 30% { transform: rotate(-12deg) scale(1.15) } 60% { transform: rotate(9deg) scale(1.12) } 100% { transform: translateY(-2px) scale(1.08) } }
+.rail-brand img { transition: transform .3s; } .rail-brand:hover img { transform: rotate(-8deg) scale(1.08); }
+.dot { animation: dot-beat 1.6s ease-in-out infinite; }
+@keyframes dot-beat { 0%,100% { box-shadow: 0 0 0 0 rgba(255,80,120,.6) } 50% { box-shadow: 0 0 0 5px rgba(255,80,120,0) } }
+.status-pill { animation: pill-pop .45s cubic-bezier(.3,1.6,.5,1); }
+@keyframes pill-pop { from { transform: scale(.4); opacity: 0 } }
+.set-item { transition: transform .15s, background .15s, box-shadow .15s; }
+.set-item:hover { transform: translateX(3px); }
+.set-item.on { box-shadow: inset 3px 0 0 var(--accent); }
+.st-btn.on .ico, .st-btn:hover .ico { animation: wiggle .45s ease; }
+.ov-new { animation: new-glow 1.8s ease-in-out infinite; }
+@keyframes new-glow { 50% { filter: brightness(1.3) drop-shadow(0 0 4px var(--accent)); } }
+.empty-card img, .hero-cover .ico { animation: floaty 4s ease-in-out infinite; }
+.busy-bar { position: relative; overflow: hidden; }
+.busy-bar::after { content: ''; position: absolute; inset: 0; background: linear-gradient(90deg, transparent, rgba(255,255,255,.18), transparent);
+  animation: shimmer 1.4s linear infinite; }
+@keyframes shimmer { from { transform: translateX(-100%) } to { transform: translateX(100%) } }
+.fx-bump { animation: bump .4s cubic-bezier(.3,1.6,.5,1); }
+@keyframes bump { 40% { transform: scale(1.25) } }
+.no-motion *, .no-motion *::before, .no-motion *::after { animation: none !important; transition: none !important; }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; } }
+.side .set-item { animation: popIn .28s cubic-bezier(.2,.8,.3,1) both; }

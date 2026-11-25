@@ -1,4 +1,13 @@
-<svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+<svg width="38" height="38" viewBox="-3 -3 38 38" fill="none" xmlns="http://www.w3.org/2000/svg"><defs><filter id="stk" x="-25%" y="-25%" width="150%" height="150%" color-interpolation-filters="sRGB">
+<feTurbulence type="fractalNoise" baseFrequency=".18" numOctaves="2" seed="7" result="n"/>
+<feMorphology in="SourceAlpha" operator="dilate" radius="1.7" result="d"/>
+<feDisplacementMap in="d" in2="n" scale="1.6" xChannelSelector="R" yChannelSelector="G" result="dw"/>
+<feMorphology in="dw" operator="dilate" radius=".55" result="d2"/>
+<feFlood flood-color="#4a2a3c" flood-opacity=".7"/><feComposite in2="d2" operator="in" result="ink"/>
+<feOffset in="ink" dx=".7" dy="1.1" result="sh0"/><feGaussianBlur in="sh0" stdDeviation=".5" result="sh"/>
+<feFlood flood-color="#fff"/><feComposite in2="dw" operator="in" result="white"/>
+<feMerge><feMergeNode in="sh"/><feMergeNode in="ink"/><feMergeNode in="white"/><feMergeNode in="SourceGraphic"/></feMerge>
+</filter></defs><g filter="url(#stk)">
 <path d="M4 25.942C4 28.1739 5.76327 30 7.91837 30H24.0816C26.2367 30 28 28.0725 28 25.8406V6.4297C28 5.1297 26.4099 4.5297 25.5155 5.4297L20.9736 10H11.1617L6.5 5.4297C5.6 4.5297 4 5.1297 4 6.4297V25.942Z" fill="#FFB02E"/>
 <path d="M9.00005 10.9265L6.20005 13.5265C5.70005 14.0265 4.80005 13.6265 4.80005 12.9265V7.72648C4.80005 7.12648 5.70005 6.72648 6.20005 7.22648L9.00005 9.82648C9.30005 10.1265 9.30005 10.6265 9.00005 10.9265Z" fill="#FF822D"/>
 <path d="M23.05 10.9265L25.85 13.5265C26.35 14.0265 27.25 13.6265 27.25 12.9265V7.72648C27.25 7.12648 26.35 6.72648 25.85 7.22648L23.05 9.82648C22.75 10.1265 22.75 10.6265 23.05 10.9265Z" fill="#FF822D"/>
@@ -10,4 +19,4 @@
 <path d="M12 17C11.4477 17 11 17.4477 11 18V19C11 19.5523 11.4477 20 12 20C12.5523 20 13 19.5523 13 19V18C13 17.4477 12.5523 17 12 17Z" fill="#402A32"/>
 <path d="M20 17C19.4477 17 19 17.4477 19 18V19C19 19.5523 19.4477 20 20 20C20.5523 20 21 19.5523 21 19V18C21 17.4477 20.5523 17 20 17Z" fill="#402A32"/>
 <path d="M15.9999 23.106C15.4625 23.6449 14.5434 24 13.4999 24C12.4681 24 11.5579 23.6527 11.0181 23.1239C11.1384 23.8481 11.9461 27.5 15.9999 27.5C20.0538 27.5 20.8615 23.8481 20.9818 23.1239C20.4419 23.6527 19.5317 24 18.4999 24C17.4564 24 16.5374 23.6449 15.9999 23.106Z" fill="#BB1D80"/>
-</svg>
+</g></svg>

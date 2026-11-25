@@ -11,7 +11,7 @@ export const THEMES: Array<{ id: Theme; label: string }> = [
 ]
 
 const KEY = 'prompt-studio-ui'
-const DEF = { theme: 'sakura' as Theme, scale: 100, sideW: 280, asideW: 360, asideOpen: true, compact: false, tagsOpen: true, labelsOpen: false, cardSize: 35, explorer: true, closedSecs: [] as string[] }
+const DEF = { theme: 'sakura' as Theme, scale: 100, sideW: 280, asideW: 360, asideOpen: true, compact: false, tagsOpen: true, labelsOpen: false, cardSize: 35, explorer: true, closedSecs: [] as string[], motion: true, petals: true }
 
 function load() {
   try { return { ...DEF, ...JSON.parse(localStorage.getItem(KEY) || '{}') } } catch { return { ...DEF } }
@@ -25,6 +25,7 @@ function apply() {
   el.style.setProperty('--side-w', ui.sideW + 'px')
   el.style.setProperty('--aside-w', ui.asideW + 'px')
   el.classList.toggle('compact', ui.compact)
+  el.classList.toggle('no-motion', !ui.motion)
 }
 apply()
 watch(ui, () => { apply(); try { localStorage.setItem(KEY, JSON.stringify(ui)) } catch {} }, { deep: true })
