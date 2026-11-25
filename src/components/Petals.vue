@@ -32,5 +32,5 @@ const petals = Array.from({ length: 14 }, (_, i) => ({
 @keyframes fall { to { transform: translateY(110vh) rotate(540deg); } }
 @keyframes sway { to { margin-left: var(--sway); } }
 :global([data-theme='light']) .petals i { filter: saturate(1.2); }
-:global([data-theme='dark']) .petals i, :global([data-theme='warm']) .petals i { opacity: .18 !important; }
+:global([data-theme='dark']) .petals i, :global([data-theme='warm']) .petals i { filter: brightness(1.1); }
 </style>
