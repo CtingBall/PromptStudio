@@ -11,6 +11,8 @@ import { boxesToRegions, relsToRegions } from '../lib/layout'
 import type { Region, Relation } from '../lib/types'
 import { generateSet, type GenResult } from '../lib/translate'
 import { getImage } from '../lib/imagedb'
+import Icon from './Icon.vue'
+import { markUsed, isNew } from '../lib/usage'
 
 const props = defineProps<{ set: PromptSet }>()
 const emit = defineEmits<{ (e: 'select', id: string): void; (e: 'toast', msg: string): void }>()
@@ -25,6 +27,7 @@ const reviewSet = ref<PromptSet | null>(null) // the set the current review was 
 
 // Run fn with the set captured NOW; nothing inside reads props.set after an await.
 async function job(label: string, fn: (set: PromptSet) => Promise<void>) {
+  markUsed(/看图|点评|诊断/.test(label) ? 'review' : 'aiEdit')
   if (busy.value) { emit('toast', '正在执行：' + busy.value); return }
   const set = props.set
   busy.value = label
@@ -155,7 +158,7 @@ defineExpose({ reviewImage, reverseImage })
 <template>
   <div class="card">
     <div class="card-head">
-      <strong>✨ AI 工具</strong>
+      <strong class="card-title"><Icon name="robot" /> AI 工具<i v-if="isNew('aiEdit')" class="dot" /></strong>
       <span class="spacer" />
       <span v-if="busy" class="muted" style="font-size: 12px">{{ busy }}中…</span>
       <button v-if="undo && undo.id === set.id && !busy" class="ghost sm" @click="undoLast">↶ 撤销上次 AI 修改</button>

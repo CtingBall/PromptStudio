@@ -57,6 +57,8 @@ export interface PromptSet {
   chars?: Char[]                        // characters (A/B/…) used by layout boxes
   relations?: Relation[]                // GBC relations between boxes
   history?: SetVersion[]                // newest first, capped
+  seenAt?: number                       // first time the set was opened (status: 看过)
+  copiedAt?: number                     // last time its prompt was copied out (status: 跑过)
   tags: Tag[]
   negative: string
   createdAt: number

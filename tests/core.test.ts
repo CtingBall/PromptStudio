@@ -197,3 +197,13 @@ test('civitai query / url', async () => {
   const i = genInfo('a\nSteps: 20, Model hash: 1a2b3c4d5e, Model: foo, Lora hashes: "bar: 9f8e7d6c5b4a"')!
   assert.equal(i.modelHash, '1a2b3c4d5e'); assert.equal(i.loras[0].hash, '9f8e7d6c5b4a')
 })
+
+test('set status: new → seen → copied → shot', async () => {
+  const { setStatus, markSeen, markCopied } = await import('../src/lib/usage')
+  const s: any = { id: 'x', name: 'n', tags: [], negative: '', createdAt: 0, updatedAt: 0 }
+  assert.equal(setStatus(s), 'new')
+  markSeen(s); assert.equal(setStatus(s), 'seen')
+  const seen = s.seenAt; markSeen(s); assert.equal(s.seenAt, seen)
+  markCopied(s); assert.equal(setStatus(s), 'copied')
+  s.shots = [{ id: 'i', at: 1 }]; assert.equal(setStatus(s), 'shot')
+})

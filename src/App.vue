@@ -22,6 +22,10 @@ import { lookup, snapshot, fmtDate } from './lib/store'
 import HistoryDialog from './components/HistoryDialog.vue'
 import ManualDialog from './components/ManualDialog.vue'
 import { AI_TASKS, type AiTask } from './lib/types'
+import { markSeen, markCopied, markUsed, isNew, setStatus, STATUS_INFO } from './lib/usage'
+import { imgSrc } from './lib/imagedb'
+import Icon from './components/Icon.vue'
+import Tutorial from './components/Tutorial.vue'
 import type { PromptSet, Tag, Region, Char, Relation } from './lib/types'
 import { CATEGORIES, RATING_LABEL, DEFAULT_GBC_TAIL } from './lib/types'
 import LayoutPanel from './components/LayoutPanel.vue'
@@ -44,8 +48,12 @@ const testTask = ref<AiTask | ''>('')
 const showRoutes = ref(false)
 const showHistory = ref(false)
 const showManual = ref(false)
-const manualTip = ref(!localStorage.getItem('ps-manual-seen'))
-function dismissTip(open = false) { manualTip.value = false; localStorage.setItem('ps-manual-seen', '1'); if (open) showManual.value = true }
+// guided tour: first launch, and once again whenever TOUR_VER changes (new UI)
+const TOUR_VER = '0.4.0'
+const showTour = ref(localStorage.getItem('ps-tour') !== TOUR_VER)
+function closeTour() { showTour.value = false; localStorage.setItem('ps-tour', TOUR_VER); localStorage.setItem('ps-manual-seen', '1') }
+const themeLabel = computed(() => THEMES.find((t) => t.id === ui.theme)?.label || '')
+function nextTheme() { const k = THEMES.findIndex((t) => t.id === ui.theme); ui.theme = THEMES[(k + 1) % THEMES.length].id; markUsed('theme') }
 function route(t: AiTask) { return (doc.settings.routes ||= {})[t] ||= {} }
 function testRoute(t: AiTask) { testTask.value = t; testConn().finally(() => (testTask.value = '')) }
 const testMsg = ref('')
@@ -101,7 +109,6 @@ function toggleSec(s?: string) {
   ui.closedSecs = secClosed(s) ? ui.closedSecs.filter((x: string) => x !== k) : [...ui.closedSecs, k]
 }
 function tapVer() { window.dispatchEvent(new Event('ps:ver-tap')) }
-function zoom(d: number) { ui.scale = d ? clampW(ui.scale + d, 70, 150) : 100 }
 
 let toastTimer: number | undefined
 function flash(msg: string, ms = 1800) {
@@ -231,6 +238,7 @@ async function copyPrompt(headers = true) {
   if (!current.value) return
   try {
     await navigator.clipboard.writeText(promptText(current.value, headers))
+    markCopied(current.value)
     flash(headers ? '已复制（带分段标题）' : '已复制（单行）')
   } catch (e: any) {
     flash('复制失败：' + (e?.message || e))
@@ -246,6 +254,8 @@ const sectionNames = computed(() => [...new Set((current.value?.tags || []).map(
 const tagMode = ref(false)
 const tagSel = ref<string[]>([])
 watch(selectedId, () => { tagSel.value = []; showLayout.value = !!current.value?.regions?.length })
+// opening a set marks it 看过 (status shown in the list)
+watch(current, (s) => markSeen(s), { immediate: true })
 const tagDs = useDragSelect()
 let sweptId = ''
 function tagDown(e: MouseEvent, id: string) {
@@ -413,6 +423,9 @@ const isGbcSet = computed(() => {
   return !!s && (settings().genFormat === 'gbc' || !!s.relations?.length || !!s.regions?.some((r) => r.tags))
 })
 const relsOf = (s: PromptSet) => (s.relations ||= [])
+const cover = computed(() => { const id = current.value?.shots?.[0]?.id; return id ? imgSrc(id) : '' })
+const curStatus = computed(() => (current.value ? setStatus(current.value) : 'new'))
+const untranslated = computed(() => (current.value?.tags || []).filter((t) => !t.zh && /[a-z]/i.test(t.en)).length)
 function ensureLayout() {
   const s = current.value
   if (!s) return
@@ -434,6 +447,7 @@ async function copyBboxes() {
   if (!current.value) return
   try {
     await navigator.clipboard.writeText(bboxJson(current.value))
+    markCopied(current.value)
     flash('已复制框坐标 JSON')
   } catch (e: any) {
     flash('复制失败：' + (e?.message || e))
@@ -480,6 +494,7 @@ async function copyGbc() {
   if (!s) return
   try {
     await navigator.clipboard.writeText(gbcText(s, settings().gbcTail ?? DEFAULT_GBC_TAIL))
+    markCopied(current.value)
     flash('已复制 GBC 格式：直接粘进正向提示词（MOSS-Image-heal 等）')
   } catch (e: any) {
     flash('复制失败：' + (e?.message || e))
@@ -490,6 +505,7 @@ async function copyMoss() {
   if (!s) return
   try {
     await navigator.clipboard.writeText(mossJson(s, promptText(s, false), doc.settings.firstLine || ''))
+    markCopied(current.value)
     const w = checkLayout(s.regions || [])
     flash('已复制 MOSS 布局 JSON：直接粘进正向提示词（文本编码器）' + (w.length ? '。⚠ ' + w.join('；') : ''), w.length ? 7000 : 3500)
   } catch (e: any) {
@@ -500,6 +516,7 @@ async function copyComfy() {
   if (!current.value) return
   try {
     await navigator.clipboard.writeText(elementsJson(current.value))
+    markCopied(current.value)
     const w = checkLayout(current.value.regions || [])
     flash('已复制：粘进文本节点 → 接到 Create Bounding Boxes 的 bboxes' + (w.length ? '。⚠ ' + w.join('；') : ''), w.length ? 7000 : 3500)
   } catch (e: any) {
@@ -548,6 +565,7 @@ async function exportComfy(change = false) {
 const genMode = ref<GenMode>('theme')
 const genRaw = ref('')
 function openGen(mode: GenMode = 'theme') {
+  markUsed('gen')
   genMode.value = mode
   genRaw.value = mode === 'rewrite' && current.value ? promptText(current.value, false) : ''
   showGen.value = true
@@ -556,6 +574,7 @@ function openGen(mode: GenMode = 'theme') {
 const xfer = ref<'' | 'export' | 'import'>('')
 const xferIds = ref<string[]>([])
 function openXfer(mode: 'export' | 'import', ids: string[] = []) {
+  markUsed('export')
   xferIds.value = ids
   xfer.value = mode
 }
@@ -584,6 +603,7 @@ function applyRaw() {
   if (settings().autoTranslate) translateMissing(true)
 }
 
+function newBlank() { const s = newSet('未命名'); doc.sets.unshift(s); selectedId.value = s.id }
 function dupSet(id: string) {
   const c = duplicateSet(id)
   if (c) selectedId.value = c.id
@@ -595,85 +615,83 @@ function clampMaxImages() {
 
 <template>
   <div class="app">
-    <header class="topbar">
-      <span class="brand"><img class="brand-logo" src="/logo.png" alt="" />千夏绘卷<em>Chinatsu Scroll</em><small>V{{ APP_VERSION }}</small></span>
-      <span class="spacer" />
-      <span v-if="busyMsg" class="muted">{{ busyMsg }}</span>
-      <button class="primary" @click="openGen('theme')">✨ 一键生成</button>
-      <div class="btn-group">
-        <button @click="openXfer('import')">导入</button>
-        <button @click="openXfer('export')">导出</button>
-        <button title="分享码 / Gist 链接" @click="showShare = true">🔗 分享</button>
-      </div>
-      <div class="btn-group" title="主题">
-        <button v-for="t in THEMES" :key="t.id" :class="{ on: ui.theme === t.id }" @click="ui.theme = t.id">{{ t.label }}</button>
-      </div>
-      <div class="btn-group" title="界面缩放（也可以用浏览器 Ctrl+滚轮）">
-        <button @click="zoom(-10)">A−</button>
-        <button title="恢复 100%" @click="zoom(0)">{{ ui.scale }}%</button>
-        <button @click="zoom(10)">A＋</button>
-      </div>
-      <button class="ghost" :title="ui.asideOpen ? '收起右侧面板' : '展开右侧面板'" @click="ui.asideOpen = !ui.asideOpen">
-        {{ ui.asideOpen ? '⇥ 收起侧栏' : '⇤ 返图/AI' }}</button>
-      <button class="ghost" title="新手手册" @click="showManual = true">📖 手册</button>
-      <button class="ghost" title="设置" @click="showSettings = true">⚙️</button>
-    </header>
-    <div v-if="manualTip" class="tip-bar">
-      <span>👋 第一次使用？可以看看「📖 手册」，几分钟了解标签 / 自然语言写法的区别和各个功能。</span>
-      <span class="spacer" />
-      <button class="primary sm" @click="dismissTip(true)">打开手册</button>
-      <button class="ghost sm" @click="dismissTip()">知道了，不再提示</button>
-    </div>
-
     <div class="body">
+      <nav class="rail" data-tour="rail">
+        <button class="rail-brand" title="千夏绘卷 Chinatsu Scroll" @click="tapVer"><img src="/art/avatar-sm.webp" alt="" /></button>
+        <button class="rail-btn hot" data-tour="gen" title="用一句话或参考图让 AI 写一整组提示词" @click="openGen('theme')">
+          <Icon name="sparkles" /><span>一键生成</span><i v-if="isNew('gen')" class="dot" /></button>
+        <button class="rail-btn" title="导入提示词组 / 备份文件" @click="openXfer('import')"><Icon name="import" /><span>导入</span></button>
+        <button class="rail-btn" title="导出选中的提示词组" @click="openXfer('export')"><Icon name="export" /><span>导出</span><i v-if="isNew('export')" class="dot" /></button>
+        <button class="rail-btn" title="分享码 / Gist 链接" @click="showShare = true; markUsed('share')"><Icon name="link" /><span>分享</span><i v-if="isNew('share')" class="dot" /></button>
+        <span class="rail-sep" />
+        <button class="rail-btn" title="重新看一遍新手引导" @click="showTour = true"><Icon name="compass" /><span>教程</span></button>
+        <button class="rail-btn" title="详细的使用手册" @click="showManual = true"><Icon name="book" /><span>手册</span></button>
+        <span class="spacer" />
+        <button class="rail-btn" :title="'主题：' + themeLabel + '（点击切换）'" @click="nextTheme"><Icon :name="ui.theme === 'light' ? 'sun' : ui.theme === 'sakura' ? 'sakura' : 'moon'" /><span>{{ themeLabel }}</span><i v-if="isNew('theme')" class="dot" /></button>
+        <button class="rail-btn" :title="ui.asideOpen ? '收起右侧返图/AI 面板' : '展开右侧返图/AI 面板'" @click="ui.asideOpen = !ui.asideOpen"><Icon name="picture" /><span>{{ ui.asideOpen ? '收起返图' : '返图/AI' }}</span></button>
+        <button class="rail-btn" title="设置（API、外观、数据）" @click="showSettings = true"><Icon name="gear" /><span>设置</span><i v-if="!doc.settings.apiKey" class="dot" title="还没填 API Key" /></button>
+        <small class="rail-ver" @click="tapVer">V{{ APP_VERSION }}</small>
+      </nav>
       <Sidebar v-model:selected="selectedId" @toast="flash" @export="openXfer('export', $event)" />
       <div class="splitter" title="拖动调整宽度" @pointerdown="startSide" @dblclick="ui.sideW = 280" />
 
-      <main v-if="current" class="main">
-        <div class="row wrap">
-          <button class="ghost" :style="{ color: current.favorite ? 'var(--star)' : '' }" title="收藏"
-            @click="current.favorite = !current.favorite; touch(current!)">{{ current.favorite ? '★' : '☆' }}</button>
-          <input v-model="current.name" class="title-input" @change="touch(current!)" />
-          <span class="muted set-date" :title="'创建 ' + fmtDate(current.createdAt, true) + '\n修改 ' + fmtDate(current.updatedAt, true)">📅 {{ fmtDate(current.createdAt) }}</span>
-          <select v-model="current.category" :class="current.category ? 'r-' + current.category : ''" style="width: auto" @change="touch(current!)">
-            <option :value="undefined">未分级</option>
-            <option v-for="c in CATEGORIES" :key="c" :value="c">{{ RATING_LABEL[c] }}</option>
-          </select>
-          <div class="btn-group">
-            <button :title="'AI 修改或批量操作前自动保存，最多 15 个'" @click="showHistory = true">🕘 历史{{ current.history?.length ? ' ' + current.history.length : '' }}</button>
-            <button @click="dupSet(current.id)">复制组</button>
-            <button class="danger" @click="delSet(current)">删除组</button>
+      <main v-if="current" class="main" data-tour="editor">
+        <div v-if="busyMsg" class="busy-bar"><span class="spin" />{{ busyMsg }}</div>
+        <div class="set-hero">
+          <div class="hero-cover" :title="current.shots?.length ? '封面：第一张返图' : '还没有返图'">
+            <img v-if="cover" :src="cover" alt="" />
+            <Icon v-else name="palette" :size="34" />
           </div>
-        </div>
-        <div class="row wrap" style="margin-top: 6px; gap: 6px">
-          <input v-model="current.folder" list="folder-list" placeholder="📁 文件夹，如 角色/hanabi" style="width: 200px" @change="touch(current!)" />
-          <datalist id="folder-list"><option v-for="f in folders" :key="f" :value="f" /></datalist>
-          <span v-for="l in current.labels || []" :key="l" class="pill on" title="点击移除" @click="dropLabel(l)">{{ l }} ×</span>
-          <input v-model="labelText" placeholder="＋标签，回车添加" style="width: 130px" @keydown.enter="!$event.isComposing && addLabel()" />
+          <div class="hero-main">
+            <div class="row">
+              <button class="ghost icon-btn" :class="{ fav: current.favorite }" title="收藏"
+                @click="current.favorite = !current.favorite; touch(current!)"><Icon name="star" :class="{ off: !current.favorite }" /></button>
+              <input v-model="current.name" class="title-input" @change="touch(current!)" />
+            </div>
+            <div class="row wrap hero-meta">
+              <span :class="['status-pill', 'st-' + curStatus]" :title="STATUS_INFO[curStatus].hint"><Icon :name="STATUS_INFO[curStatus].icon" />{{ STATUS_INFO[curStatus].label }}</span>
+              <span class="muted set-date" :title="'创建 ' + fmtDate(current.createdAt, true) + '\n修改 ' + fmtDate(current.updatedAt, true)">{{ fmtDate(current.createdAt) }}</span>
+              <span v-if="current.copiedAt" class="muted" :title="fmtDate(current.copiedAt, true)">· 上次复制 {{ fmtDate(current.copiedAt) }}</span>
+              <select v-model="current.category" :class="['sm', current.category ? 'r-' + current.category : '']" style="width: auto" @change="touch(current!)">
+                <option :value="undefined">未分级</option>
+                <option v-for="c in CATEGORIES" :key="c" :value="c">{{ RATING_LABEL[c] }}</option>
+              </select>
+              <input v-model="current.folder" class="sm" list="folder-list" placeholder="文件夹，如 角色/hanabi" style="width: 170px" @change="touch(current!)" />
+              <datalist id="folder-list"><option v-for="f in folders" :key="f" :value="f" /></datalist>
+              <span v-for="l in current.labels || []" :key="l" class="pill on" title="点击移除" @click="dropLabel(l)">{{ l }} ×</span>
+              <input v-model="labelText" class="sm" placeholder="＋标签，回车添加" style="width: 120px" @keydown.enter="!$event.isComposing && addLabel()" />
+            </div>
+          </div>
+          <div class="hero-act">
+            <button class="primary big" data-tour="copy" title="复制分段提示词，拿去跑图（会标记为「跑过」）" @click="copyPrompt(true)"><Icon name="clipboard" /> 复制提示词</button>
+            <div class="btn-group">
+              <button title="复制成一行，没有分段标题" @click="copyPrompt(false)">单行</button>
+              <button :title="'AI 修改或批量操作前自动保存，最多 15 个'" @click="showHistory = true; markUsed('history')"><Icon name="history" /> 历史{{ current.history?.length ? ' ' + current.history.length : '' }}</button>
+              <button title="复制一份" @click="dupSet(current.id)"><Icon name="copy" /></button>
+              <button class="danger" title="删除这一组" @click="delSet(current)"><Icon name="trash" /></button>
+            </div>
+          </div>
         </div>
 
         <section class="section">
           <div class="section-head">
             <button class="collapse-btn" :title="ui.tagsOpen ? '收起标签' : '展开标签'" @click="ui.tagsOpen = !ui.tagsOpen">{{ ui.tagsOpen ? '▾' : '▸' }}</button>
-            <h4 style="cursor: pointer" @click="ui.tagsOpen = !ui.tagsOpen">标签</h4>
+            <h4 style="cursor: pointer" @click="ui.tagsOpen = !ui.tagsOpen"><Icon name="tag" /> 标签</h4>
             <span class="badge">{{ current.tags.length }}</span>
+            <span v-if="untranslated" class="badge warn" title="还没有中文翻译的标签">{{ untranslated }} 个未译</span>
             <span class="spacer" />
             <div class="btn-group">
-              <button :disabled="!!busyMsg" @click="translateMissing()">翻译未译</button>
+              <button :disabled="!!busyMsg" @click="translateMissing()"><Icon name="translate" /> 翻译未译</button>
               <button :disabled="!!busyMsg" @click="retranslateAll">全部重翻</button>
             </div>
             <button v-if="tagUndo && tagUndo.id === current.id && !busyMsg" class="ghost" @click="undoTags">↶ 撤销{{ tagUndo.label }}</button>
             <div class="btn-group">
-              <button @click="openRaw">编辑原文</button>
-              <button @click="openGen('rewrite')">AI 改写格式</button>
-              <button :class="{ on: showLayout }" @click="ensureLayout">画框布局<span v-if="current.regions?.length" class="badge" style="margin-left: 4px">{{ current.regions.length }}</span></button>
-            </div>
-            <div class="btn-group">
-              <button @click="copyPrompt(true)">复制(分段)</button>
-              <button @click="copyPrompt(false)">复制(单行)</button>
+              <button @click="openRaw"><Icon name="pencil" /> 编辑原文</button>
+              <button @click="openGen('rewrite'); markUsed('rewrite')"><Icon name="wand" /> AI 改写格式<i v-if="isNew('rewrite')" class="dot" /></button>
+              <button :class="{ on: showLayout }" @click="ensureLayout(); markUsed('layout')"><Icon name="ruler" /> 画框布局<span v-if="current.regions?.length" class="badge" style="margin-left: 4px">{{ current.regions.length }}</span><i v-if="isNew('layout')" class="dot" /></button>
             </div>
             <button :class="tagMode ? 'primary' : ''" @click="tagMode = !tagMode; tagSel = []">
-              {{ tagMode ? '退出批量' : '批量编辑' }}</button>
+              <Icon name="checklist" /> {{ tagMode ? '退出批量' : '批量编辑' }}</button>
           </div>
 
           <template v-if="ui.tagsOpen">
@@ -729,7 +747,7 @@ function clampMaxImages() {
 
         <section v-if="showLayout && current.regions && current.canvas" class="section">
           <div class="section-head">
-            <h4>画框布局（区域提示词）</h4>
+            <h4><Icon name="ruler" /> 画框布局（区域提示词）</h4>
             <span class="badge">{{ current.regions.length }} 个框</span>
             <span class="spacer" />
             <button @click="copyBboxes">复制框坐标 JSON</button>
@@ -745,25 +763,35 @@ function clampMaxImages() {
         </section>
 
         <section class="section">
-          <div class="section-head"><h4>负向提示词</h4></div>
+          <div class="section-head"><h4><Icon name="negative" /> 负向提示词</h4></div>
           <textarea v-model="current.negative" rows="2" placeholder="nsfw, worst quality, bad anatomy…" @change="touch(current!)" />
         </section>
 
         <section class="section">
           <div class="section-head">
             <button class="collapse-btn" @click="showOut = !showOut">{{ showOut ? '▾' : '▸' }}</button>
-            <h4 style="cursor: pointer" @click="showOut = !showOut">正向提示词（输出预览）</h4>
+            <h4 style="cursor: pointer" @click="showOut = !showOut"><Icon name="scroll" /> 正向提示词（输出预览）</h4>
             <span class="spacer" />
-            <button class="ghost" @click="copyPrompt(true)">复制</button>
+            <button class="ghost" @click="copyPrompt(true)"><Icon name="clipboard" /> 复制</button>
           </div>
           <textarea v-if="showOut" class="out-box" :value="promptText(current)" rows="10" readonly />
         </section>
       </main>
-      <main v-else class="main muted" style="display: grid; place-items: center">左侧新建或选择一个提示词组</main>
+      <main v-else class="main empty-main">
+        <div class="empty-card">
+          <img src="/art/empty.webp" alt="" />
+          <h3>还没有选中提示词组</h3>
+          <p class="muted">在左边选一组，或者让 AI 帮你写一组新的。</p>
+          <div class="row" style="justify-content: center">
+            <button class="primary big" @click="openGen('theme')"><Icon name="sparkles" /> 一键生成</button>
+            <button class="big" @click="newBlank"><Icon name="plus" /> 新建空白组</button>
+          </div>
+        </div>
+      </main>
 
       <template v-if="current">
         <div v-show="ui.asideOpen" class="splitter right" title="拖动调整宽度，双击恢复" @pointerdown="startAside" @dblclick="ui.asideW = 360" />
-        <aside v-show="ui.asideOpen" class="aside">
+        <aside v-show="ui.asideOpen" class="aside" data-tour="aside">
           <Gallery :set="current" @toast="flash" @review="aiRef?.reviewImage($event)"
             @reverse="aiRef?.reverseImage($event)" @import-meta="importMeta" />
           <AiTools ref="aiRef" :set="current" @toast="flash" @select="selectedId = $event" />
@@ -790,7 +818,7 @@ function clampMaxImages() {
     <!-- settings modal -->
     <div v-if="showSettings" class="modal-mask" @click.self="showSettings = false">
       <div class="modal">
-        <h3 style="margin-top: 0">设置</h3>
+        <h3 style="margin-top: 0"><Icon name="gear" /> 设置</h3>
         <div class="settings-grid">
           <label>
             API 地址（OpenAI 兼容 base，以 /v1 结尾）
@@ -880,6 +908,7 @@ function clampMaxImages() {
 
     <HistoryDialog v-if="showHistory && current" :set="current" @close="showHistory = false" @toast="flash" />
     <ManualDialog v-if="showManual" @close="showManual = false" />
+    <Tutorial v-if="showTour" @close="closeTour" @manual="showManual = true" />
     <TransferDialog v-if="xfer" :mode="xfer" :preselect="xferIds" :current="selectedId"
       @close="xfer = ''" @toast="flash" @select="selectedId = $event" />
     <Credits />

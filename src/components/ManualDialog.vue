@@ -1,9 +1,10 @@
 <script setup lang="ts">
-// Beginner manual. Never forced: the app only shows a one-time hint bar on first launch.
+// Beginner manual. The guided tour (Tutorial.vue) is the forced part; this is the reference.
 import { ref } from 'vue'
 const emit = defineEmits<{ (e: 'close'): void }>()
 const TABS = [
   { id: 'start', label: '快速上手' },
+  { id: 'status', label: '状态与引导' },
   { id: 'format', label: '三种写法' },
   { id: 'features', label: '功能一览' },
   { id: 'ai', label: 'AI 与模型' },
@@ -25,10 +26,25 @@ const tab = ref<(typeof TABS)[number]['id']>('start')
       </div>
 
       <div class="manual-body">
+        <template v-if="tab === 'status'">
+          <h4>提示词组的四种状态</h4>
+          <p>左侧列表每组名字前有一个彩色小点，搜索框下面的四个按钮可以只看某一种状态：</p>
+          <ul>
+            <li><b style="color:#ff6fa5">未看</b>：一键生成、导入或 AI 新建后还没打开过，卡片右上角会有 NEW。</li>
+            <li><b style="color:#8ab4ff">看过</b>：打开过，但还没把提示词复制出去。</li>
+            <li><b style="color:#ffb35c">跑过</b>：复制过提示词（任何复制按钮都算，包括 MOSS / GBC / ComfyUI），说明拿去出过图。编辑区顶部会显示上次复制的时间。</li>
+            <li><b style="color:#5fd49a">已出图</b>：上传了返图。返图的第一张会当封面。</li>
+          </ul>
+          <p>状态是自动记录的，不用手动点。想把「跑过」的组再跑一遍，可以点「跑过」筛选后用 🍡 随机抽一组。</p>
+          <h4>小红点</h4>
+          <p>还没用过的功能按钮上会有一个小红点（一键生成、画框布局、AI 改写、返图、分享、批量、随机抽组、主题等）。用过一次就消失；「设置」上的红点表示还没填 API Key。</p>
+          <h4>新手引导</h4>
+          <p>第一次打开和每次大版本界面更新后会自动弹出一次引导。之后想再看，点左侧功能栏的「教程」。</p>
+        </template>
         <template v-if="tab === 'start'">
           <h4>三步开始</h4>
           <ol>
-            <li><b>接上 AI</b>：点右上角 ⚙️，填 API 地址、Key 和模型（OpenAI 兼容接口都行，官方或中转站），点「测试连接」。不接 AI 也能用，只是不能自动翻译和生成。</li>
+            <li><b>接上 AI</b>：点左侧功能栏的「设置」，填 API 地址、Key 和模型（OpenAI 兼容接口都行，官方或中转站），点「测试连接」。不接 AI 也能用，只是不能自动翻译和生成。</li>
             <li><b>生成第一组</b>：点「✨ 一键生成」，写一句主题，比如「雨夜霓虹街头撑红伞的少女」，选写法，点生成。</li>
             <li><b>整理和使用</b>：在标签区拖动、改权重、改译文；点「复制」贴到 WebUI / ComfyUI，或直接导出 ComfyUI 工作流。出图后把图拖进右侧「返图」，以后一眼就知道这组提示词出什么效果。</li>
           </ol>
@@ -82,7 +98,7 @@ const tab = ref<(typeof TABS)[number]['id']>('start')
             <tr><td>🕘 历史</td><td>AI 修改和批量操作前自动保存，最多 15 个版本，可以看差异、一键回退。</td></tr>
             <tr><td>🌐 C站</td><td>返图大图里的模型、LoRA 可以点去 C站：有文件哈希时按哈希精确搜，没有就按去掉版本号/精度后缀的名字搜；搜不准就点 🔗 绑定正确页面，以后直接打开。可选蓝站 / 红站，「自动」= 18+ 的组去红站。</td></tr>
             <tr><td>返图参数</td><td>PNG / JPG / WebP 里的模型、LoRA、步数、CFG、种子、尺寸会自动读出来；列表里可按模型/LoRA 名搜索。</td></tr>
-            <tr><td>▦ 画框一览</td><td>有画框的组在列表里有缩略框图和「▦ N框」标记，▦ 按钮只看有画框的组；卡片放大后图片边缘显示写法、画框、分级。</td></tr>
+            <tr><td>▦ 画框一览</td><td>有画框的组在列表里有缩略框图和「▦ N框」标记，尺子按钮只看有画框的组；卡片放大后图片边缘显示写法、画框、分级。</td></tr>
             <tr><td>导入 / 导出 / 🔗 分享</td><td>导出 JSON（可带图）给自己备份；分享码或 Gist 链接发给别人，不含图片和 Key。</td></tr>
           </table>
         </template>

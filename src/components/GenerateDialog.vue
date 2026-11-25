@@ -231,7 +231,7 @@ async function run() {
         <div class="btn-group">
           <button v-for="(l, f) in FORMAT_LABEL" :key="f" :class="{ on: doc.settings.genFormat === f }" @click="doc.settings.genFormat = f">{{ l }}</button>
         </div>
-        <span class="muted fmt-tip">{{ FORMAT_TIP[doc.settings.genFormat] }}（区别见 📖 手册）</span>
+        <span class="muted fmt-tip">{{ FORMAT_TIP[doc.settings.genFormat] }}（区别见左侧「手册」）</span>
       </div>
 
       <div v-if="skillList.length" class="row wrap" style="margin-top: 10px">

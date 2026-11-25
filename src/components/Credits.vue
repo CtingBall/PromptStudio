@@ -29,11 +29,12 @@ onBeforeUnmount(() => { window.removeEventListener('keydown', onKey); window.rem
   <div v-if="open" class="modal-mask" style="z-index: 90" @click.self="open = false">
     <div class="modal credits">
       <div class="credits-glow">✦</div>
-      <img src="/logo.png" alt="" style="width: 72px; height: 72px; border-radius: 16px; box-shadow: var(--shadow)" />
+      <img src="/art/avatar.webp" alt="" style="width: 72px; height: 72px; border-radius: 16px; box-shadow: var(--shadow)" />
       <h2 style="margin: 4px 0">千夏绘卷 · Chinatsu Scroll</h2>
       <p class="muted" style="margin: 0 0 14px">你发现了隐藏菜单</p>
       <div class="muted" style="font-size: .86em">作者</div>
       <div class="credits-name">{{ who }}</div>
+      <div class="muted" style="font-size: .78em; margin-top: 14px">界面图标：Fluent Emoji（Microsoft，MIT 许可）· 看板娘插画由 AI 生成</div>
       <button class="primary" style="margin-top: 18px" @click="open = false">好耶</button>
     </div>
   </div>

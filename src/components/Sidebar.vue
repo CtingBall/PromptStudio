@@ -9,6 +9,8 @@ import { genInfo } from '../lib/pngmeta'
 import LayoutMini from './LayoutMini.vue'
 import { aiClassify } from '../lib/ai'
 import { ui } from '../lib/ui'
+import Icon from './Icon.vue'
+import { setStatus, STATUS_INFO, STATUS_ORDER, markUsed, isNew, type SetStatus } from '../lib/usage'
 
 const props = defineProps<{ selected: string }>()
 const emit = defineEmits<{ (e: 'update:selected', id: string): void; (e: 'toast', msg: string): void; (e: 'export', ids: string[]): void }>()
@@ -21,6 +23,8 @@ const label = ref<string[]>([])
 const favOnly = ref(false)
 const layoutOnly = ref(false)   // only sets that have a bbox layout
 const shotsOnly = ref(false)    // only sets that have result images
+const status = ref<'' | SetStatus>('')   // 未看 / 看过 / 跑过 / 已出图
+const statusCount = (st: SetStatus) => doc.sets.filter((s) => setStatus(s) === st).length
 const hasLayout = (s: PromptSet) => !!s.regions?.length
 // image overlays (format / layout) only once cards are big enough to read them
 const overlay = computed(() => ui.cardSize >= 55)
@@ -42,13 +46,14 @@ const visible = computed(() => {
     if (!ui.explorer) {
       // classic view: folder dropdown filters, '' = all, '__none' = no folder
       if (folder.value === '__none' ? s.folder : folder.value && !(s.folder === folder.value || (s.folder || '').startsWith(folder.value + '/'))) return false
-    } else if (k || rating.value !== 'ALL' || label.value.length || favOnly.value || range.value || layoutOnly.value || shotsOnly.value) {
+    } else if (k || rating.value !== 'ALL' || label.value.length || favOnly.value || range.value || layoutOnly.value || shotsOnly.value || status.value) {
       if (folder.value && !(s.folder === folder.value || (s.folder || '').startsWith(folder.value + '/'))) return false
     } else if ((s.folder || '') !== folder.value) return false
     if (label.value.length && !label.value.every((l) => s.labels?.includes(l))) return false
     if (favOnly.value && !s.favorite) return false
     if (layoutOnly.value && !hasLayout(s)) return false
     if (shotsOnly.value && !s.shots?.length) return false
+    if (status.value && setStatus(s) !== status.value) return false
     if (range.value && s.createdAt < Date.now() - Number(range.value) * 86400000) return false
     if (k) {
       const hay = [s.name, fmtDate(s.createdAt), s.folder, ...(s.labels || []), ...setModels(s), ...(s.regions || []).map((r) => r.text), ...s.tags.map((t) => t.en + ' ' + t.zh)].join(' ').toLowerCase()
@@ -87,6 +92,7 @@ function create() {
   q.value = ''
   label.value = []
   favOnly.value = false
+  status.value = ''
   const s = addSet()
   if (rating.value !== 'ALL' && rating.value !== 'NONE') s.category = rating.value
   if (folder.value && folder.value !== '__none') s.folder = folder.value
@@ -183,12 +189,13 @@ const subFolders = computed(() => {
       return { path, name: path.slice(pre.length), count: inside.length, cover }
     })
 })
-const browsing = computed(() => ui.explorer && !q.value.trim() && rating.value === 'ALL' && !label.value.length && !favOnly.value && !range.value && !layoutOnly.value && !shotsOnly.value)
+const browsing = computed(() => ui.explorer && !q.value.trim() && rating.value === 'ALL' && !label.value.length && !favOnly.value && !range.value && !layoutOnly.value && !shotsOnly.value && !status.value)
 function openFolder(p: string) { folder.value = p; sel.value = [] }
 // ---- 🎲 random set: for "I don't know what to run" ----
 // picks from what's currently visible (respects search/rating/filters; in Explorer view also subfolders)
 const lastRand = ref('')
 function randomSet() {
+  markUsed('random')
   const pre = folder.value && folder.value !== '__none' ? folder.value : ''
   let pool = ui.explorer && browsing.value
     ? doc.sets.filter((s) => !pre || s.folder === pre || (s.folder || '').startsWith(pre + '/'))
@@ -202,9 +209,9 @@ function randomSet() {
   const s = pool[i]
   lastRand.value = s.id
   emit('update:selected', s.id)
-  emit('toast', `🎲 抽到：${s.name}${s.folder ? '（📁' + s.folder + '）' : ''}，再点一次换一个`)
+  emit('toast', `🍡 抽到：${s.name}${s.folder ? '（📁' + s.folder + '）' : ''}，再点一次换一个`)
 }
-function toggleView() { ui.explorer = !ui.explorer; folder.value = '' }
+function toggleView() { ui.explorer = !ui.explorer; folder.value = ''; markUsed('explorer') }
 function upFolder() { openFolder(folder.value.includes('/') ? folder.value.slice(0, folder.value.lastIndexOf('/')) : '') }
 function newFolder() {
   const n = prompt('新建文件夹名称（可用 / 一次建多级）')
@@ -248,10 +255,18 @@ function drop(t: PromptSet) {
 </script>
 
 <template>
-  <aside class="side">
+  <aside class="side" data-tour="library">
     <div class="side-top">
-      <button class="primary" style="width: 100%" @click="create">＋ 新建提示词组</button>
-      <input v-model="q" placeholder="🔍 搜索名称 / 标签 / 中英文词" style="width: 100%; margin-top: 8px" />
+      <div class="row" style="gap: 6px">
+        <button class="primary" style="flex: 1" @click="create"><Icon name="plus" /> 新建提示词组</button>
+        <button class="ghost icon-btn" title="随机抽一组提示词（不知道跑什么时点一下；按当前筛选范围抽，有返图/收藏的更容易抽到）" @click="randomSet"><Icon name="dango" /><i v-if="isNew('random')" class="dot" /></button>
+      </div>
+      <div class="search-box"><Icon name="search" /><input v-model="q" placeholder="搜索名称 / 标签 / 中英文词 / 模型" /></div>
+
+      <div class="status-row" data-tour="status">
+        <button v-for="st in STATUS_ORDER" :key="st" :class="['st-btn', 'st-' + st, { on: status === st }]" :title="STATUS_INFO[st].hint + '（点击只看这一类）'"
+          @click="status = status === st ? '' : st"><Icon :name="STATUS_INFO[st].icon" />{{ STATUS_INFO[st].label }}<small>{{ statusCount(st) }}</small></button>
+      </div>
 
       <div class="seg" style="margin-top: 8px">
         <button v-for="c in (['ALL', ...CATEGORIES, 'NONE'] as const)" :key="c"
@@ -266,7 +281,7 @@ function drop(t: PromptSet) {
           <option value="__none">（无文件夹）</option>
           <option v-for="f in folders" :key="f" :value="f">{{ f }}</option>
         </select>
-        <button class="ghost" :title="ui.explorer ? '切换到经典列表（文件夹下拉筛选）' : '切换到资源管理器式文件夹'" @click="toggleView">{{ ui.explorer ? '🗂' : '≣' }}</button>
+        <button class="ghost icon-btn" :title="ui.explorer ? '切换到经典列表（文件夹下拉筛选）' : '切换到资源管理器式文件夹'" @click="toggleView"><Icon :name="ui.explorer ? 'folder' : 'layers'" /></button>
         <select v-model="sort" style="flex: 1; min-width: 0" title="排序">
           <option value="manual">手动</option>
           <option value="updated">最近修改</option>
@@ -281,10 +296,8 @@ function drop(t: PromptSet) {
           <option value="30">30 天内</option>
           <option value="90">90 天内</option>
         </select>
-        <button class="ghost" title="随机抽一组提示词（不知道跑什么时点一下；按当前筛选范围抽，有返图/收藏的更容易抽到）" @click="randomSet">🎲</button>
-        <button :class="favOnly ? 'primary' : 'ghost'" title="只看收藏" @click="favOnly = !favOnly">★</button>
-        <button :class="layoutOnly ? 'primary' : 'ghost'" title="只看有画框布局的组" @click="layoutOnly = !layoutOnly">▦</button>
-        <button :class="shotsOnly ? 'primary' : 'ghost'" title="只看有返图的组" @click="shotsOnly = !shotsOnly">🖼</button>
+                <button :class="['icon-btn', favOnly ? 'on' : 'ghost']" title="只看收藏" @click="favOnly = !favOnly"><Icon name="star" /></button>
+        <button :class="['icon-btn', layoutOnly ? 'on' : 'ghost']" title="只看有画框布局的组" @click="layoutOnly = !layoutOnly"><Icon name="ruler" /></button>
       </div>
 
       <template v-if="allLabels.length">
@@ -304,7 +317,7 @@ function drop(t: PromptSet) {
       </template>
 
       <div class="row" style="margin-top: 8px; gap: 4px; flex-wrap: wrap">
-        <button class="ghost sm" @click="bulk = !bulk; sel = []">{{ bulk ? '完成' : '批量' }}</button>
+        <button class="ghost sm" @click="bulk = !bulk; sel = []; markUsed('bulk')"><Icon name="checklist" /> {{ bulk ? '完成' : '批量' }}</button>
         <span class="muted" style="font-size: 12px">{{ visible.length }} 组</span>
         <template v-if="bulk">
           <button class="ghost sm" @click="selectAll">全选</button>
@@ -342,7 +355,7 @@ function drop(t: PromptSet) {
           @dragover.prevent="fHover = c.path" @dragleave="fHover = ''" @drop.prevent="dropOnFolder(c.path)">{{ c.name }}</span>
       </template>
       <span class="spacer" />
-      <button class="ghost sm" title="在这里新建文件夹" @click="newFolder">＋📁</button>
+      <button class="ghost sm" title="在这里新建文件夹" @click="newFolder">＋<Icon name="folder" /></button>
     </div>
     <div :class="['side-list', mode, { 'img-only': ui.cardSize >= 85 }]" :style="listStyle" @click="fmenu = null">
       <template v-if="browsing">
@@ -373,6 +386,7 @@ function drop(t: PromptSet) {
           <LayoutMini v-else-if="hasLayout(s)" :set="s" :size="mode === 'mode-row' ? 40 : 120" class="thumb-layout" />
           <span v-else>{{ s.name.slice(0, 1) }}</span>
           <LayoutMini v-if="hasLayout(s) && s.shots?.length && mode !== 'mode-row'" :set="s" :size="34" class="thumb-corner" />
+          <span v-if="setStatus(s) === 'new'" class="ov ov-new">NEW</span>
           <template v-if="overlay">
             <span :class="['ov', 'ov-fmt', 'f-' + promptFormat(s.tags)]" :title="'提示词写法：' + FORMAT_LABEL[promptFormat(s.tags)]">{{ fmtIcon[promptFormat(s.tags)] }} {{ FORMAT_LABEL[promptFormat(s.tags)] }}</span>
             <span v-if="hasLayout(s)" class="ov ov-layout" :title="s.regions!.length + ' 个框' + (s.canvas ? '，' + s.canvas.w + '×' + s.canvas.h : '')">▦ 画框 {{ s.regions!.length }}</span>
@@ -381,6 +395,7 @@ function drop(t: PromptSet) {
         </div>
         <div class="set-text">
           <div class="set-name" :title="s.name">
+            <span :class="['st-dot', 'st-' + setStatus(s)]" :title="STATUS_INFO[setStatus(s)].label + '：' + STATUS_INFO[setStatus(s)].hint" />
             <span v-if="s.favorite" style="color: var(--star)">★</span>{{ s.name }}
           </div>
           <div class="set-sub">

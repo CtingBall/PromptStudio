@@ -7,6 +7,8 @@ import { doc, touch } from '../lib/store'
 import { uid } from '../lib/tags'
 import { putImage, deleteImage, imgSrc } from '../lib/imagedb'
 import { fileToDataUrl } from '../lib/image'
+import Icon from './Icon.vue'
+import { markUsed, isNew } from '../lib/usage'
 import { readPngText, parseGenMeta, metaOf, genInfo, infoLine, civitaiUrl, civitaiQuery } from '../lib/pngmeta'
 
 const props = defineProps<{ set: PromptSet }>()
@@ -23,6 +25,7 @@ const busy = ref(false)
 const hover = ref(false)
 
 async function add(files: FileList | File[] | null | undefined) {
+  if (files?.length) markUsed('shot')
   if (!files) return
   const set = props.set // capture: images must land on this set even if the user switches
   busy.value = true
@@ -121,7 +124,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', key))
 <template>
   <div class="card" tabindex="0" @paste="onPaste">
     <div class="card-head">
-      <strong>🖼 返图</strong>
+      <strong class="card-title"><Icon name="picture" /> 返图<i v-if="isNew('shot')" class="dot" /></strong>
       <span class="badge">{{ shots.length }}</span>
       <span class="spacer" />
       <button class="ghost sm" :disabled="busy" @click="fileEl?.click()">{{ busy ? '保存中…' : '＋ 上传' }}</button>
